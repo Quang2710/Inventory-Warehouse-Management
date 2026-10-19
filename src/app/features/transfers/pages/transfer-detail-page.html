@@ -1,0 +1,135 @@
+@let transfer = current();
+<app-page-header
+  [heading]="transfer.code"
+  [subtitle]="transfer.fromWarehouseName + ' → ' + transfer.toWarehouseName"
+>
+  <div actions class="actions">
+    <app-status-chip [status]="statusLabels[transfer.status]" />
+    @if (canEdit()) {
+      <a mat-stroked-button [routerLink]="['/transfers', transfer.id, 'edit']">
+        <mat-icon>edit</mat-icon>{{ 'transfers.actions.edit' | t }}
+      </a>
+      <button mat-button type="button" class="danger" [disabled]="busy()" (click)="remove()">
+        <mat-icon>delete</mat-icon>{{ 'transfers.actions.delete' | t }}
+      </button>
+      <button mat-flat-button type="button" [disabled]="busy()" (click)="ship()">
+        <mat-icon>local_shipping</mat-icon>{{ 'transfers.actions.ship' | t }}
+      </button>
+    }
+    @if (canCancel()) {
+      <button mat-button type="button" class="danger" [disabled]="busy()" (click)="cancel()">
+        <mat-icon>cancel</mat-icon>{{ 'transfers.actions.cancel' | t }}
+      </button>
+    }
+    @if (canReceive()) {
+      <button mat-flat-button type="button" [disabled]="busy()" (click)="receive()">
+        <mat-icon>inventory</mat-icon>{{ 'transfers.actions.receive' | t }}
+      </button>
+    }
+  </div>
+</app-page-header>
+
+<div class="layout">
+  <section class="card">
+    <dl class="facts">
+      <dt>{{ 'transfers.fields.from' | t }}</dt>
+      <dd>{{ transfer.fromWarehouseName }}</dd>
+      <dt>{{ 'transfers.fields.to' | t }}</dt>
+      <dd>{{ transfer.toWarehouseName }}</dd>
+      <dt>{{ 'transfers.fields.transferDate' | t }}</dt>
+      <dd>{{ transfer.transferDate | date }}</dd>
+      <dt>{{ 'transfers.fields.expectedDate' | t }}</dt>
+      <dd>{{ transfer.expectedDate ? (transfer.expectedDate | date) : '—' }}</dd>
+      @if (transfer.note) {
+        <dt>{{ 'transfers.fields.note' | t }}</dt>
+        <dd>{{ transfer.note }}</dd>
+      }
+    </dl>
+
+    @if (shortfall() > 0) {
+      <p class="banner banner--warn" role="status">
+        <mat-icon aria-hidden="true">report</mat-icon>
+        {{ 'transfers.discrepancy' | t: { count: shortfall() } }}
+      </p>
+    }
+
+    <div class="table-wrap">
+      <table class="lines">
+        <caption class="visually-hidden">
+          {{
+            'transfers.lines.title' | t
+          }}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">{{ 'transfers.fields.product' | t }}</th>
+            <th scope="col" class="num">{{ 'transfers.fields.quantity' | t }}</th>
+            <th scope="col">{{ 'transfers.fields.picks' | t }}</th>
+            <th scope="col" class="num">{{ 'transfers.fields.received' | t }}</th>
+            <th scope="col">{{ 'transfers.fields.toLocation' | t }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (line of transfer.lines; track line.id; let index = $index) {
+            <tr [class.row--error]="lineErrors()[index]">
+              <td>{{ index + 1 }}</td>
+              <td>
+                <span class="mono">{{ line.sku }}</span> {{ line.productName }}
+                @if (lineErrors()[index]; as message) {
+                  <span class="line-error" role="alert">{{ message }}</span>
+                }
+              </td>
+              <td class="num">{{ line.quantity | number }} {{ line.unit }}</td>
+              <td>
+                @for (pick of line.picks; track pick.locationId) {
+                  <span class="pick"
+                    ><span class="mono">{{ pick.locationCode }}</span> ×
+                    {{ pick.quantity | number }}</span
+                  >
+                } @empty {
+                  —
+                }
+              </td>
+              <td
+                class="num"
+                [class.short]="
+                  line.receivedQuantity !== null &&
+                  line.receivedQuantity !== undefined &&
+                  line.receivedQuantity < line.quantity
+                "
+              >
+                {{
+                  line.receivedQuantity === null || line.receivedQuantity === undefined
+                    ? '—'
+                    : (line.receivedQuantity | number)
+                }}
+              </td>
+              <td class="mono">{{ line.toLocationCode ?? '—' }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <aside class="card timeline" [attr.aria-label]="'transfers.timeline.title' | t">
+    <h2>{{ 'transfers.timeline.title' | t }}</h2>
+    <ol>
+      @for (entry of timeline(); track entry.labelKey) {
+        <li>
+          <mat-icon aria-hidden="true">{{ entry.icon }}</mat-icon>
+          <div>
+            <strong>{{ entry.labelKey | t }}</strong>
+            <span class="muted"
+              >{{ entry.at | date: 'dd/MM/yyyy HH:mm' }}{{ entry.by ? ' · ' + entry.by : '' }}</span
+            >
+            @if (entry.note) {
+              <span class="note">{{ entry.note }}</span>
+            }
+          </div>
+        </li>
+      }
+    </ol>
+  </aside>
+</div>

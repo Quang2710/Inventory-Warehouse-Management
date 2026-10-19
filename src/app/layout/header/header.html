@@ -1,0 +1,101 @@
+<mat-toolbar class="toolbar">
+  <button
+    mat-icon-button
+    type="button"
+    (click)="menuToggle.emit()"
+    [attr.aria-label]="'nav.toggleMenu' | t"
+    [matTooltip]="'nav.toggleMenu' | t"
+  >
+    <mat-icon>menu</mat-icon>
+  </button>
+
+  @if (demoMode()) {
+    <span class="demo-badge">{{ 'header.demoBadge' | t }}</span>
+  }
+
+  <span class="spacer"></span>
+
+  @if (demoMode()) {
+    <button
+      mat-icon-button
+      type="button"
+      (click)="demoReset.emit()"
+      [attr.aria-label]="'header.demoReset' | t"
+      [matTooltip]="'header.demoReset' | t"
+    >
+      <mat-icon>restart_alt</mat-icon>
+    </button>
+  }
+
+  <button
+    mat-icon-button
+    type="button"
+    [matMenuTriggerFor]="languageMenu"
+    [attr.aria-label]="'header.language' | t"
+    [matTooltip]="'header.language' | t"
+  >
+    <mat-icon>translate</mat-icon>
+  </button>
+  <mat-menu #languageMenu="matMenu">
+    @for (option of languages(); track option) {
+      <button
+        mat-menu-item
+        type="button"
+        role="menuitemradio"
+        [attr.aria-checked]="option === language()"
+        (click)="languageChange.emit(option)"
+      >
+        <mat-icon>{{
+          option === language() ? 'radio_button_checked' : 'radio_button_unchecked'
+        }}</mat-icon>
+        <span [attr.lang]="option">{{ languageLabels[option] | t }}</span>
+      </button>
+    }
+  </mat-menu>
+
+  <button
+    mat-icon-button
+    type="button"
+    [matMenuTriggerFor]="themeMenu"
+    [attr.aria-label]="'header.theme' | t"
+    [matTooltip]="'header.theme' | t"
+  >
+    <mat-icon>{{ themeOptions[themeMode()].icon }}</mat-icon>
+  </button>
+  <mat-menu #themeMenu="matMenu">
+    @for (mode of themeModes; track mode) {
+      <button
+        mat-menu-item
+        type="button"
+        role="menuitemradio"
+        [attr.aria-checked]="mode === themeMode()"
+        (click)="themeModeChange.emit(mode)"
+      >
+        <mat-icon>{{ themeOptions[mode].icon }}</mat-icon>
+        <span>{{ themeOptions[mode].labelKey | t }}</span>
+      </button>
+    }
+  </mat-menu>
+
+  <button
+    mat-button
+    type="button"
+    class="account"
+    [matMenuTriggerFor]="accountMenu"
+    [attr.aria-label]="('header.account' | t) + ': ' + user().fullName"
+  >
+    <span class="avatar" aria-hidden="true">{{ initials() }}</span>
+    <span class="account__name">{{ user().fullName }}</span>
+  </button>
+  <mat-menu #accountMenu="matMenu" xPosition="before">
+    <div class="account-card">
+      <div class="account-card__name">{{ user().fullName }}</div>
+      <div class="account-card__meta">{{ user().username }} · {{ roleLabel() | t }}</div>
+    </div>
+    <mat-divider />
+    <button mat-menu-item type="button" (click)="logout.emit()">
+      <mat-icon>logout</mat-icon>
+      <span>{{ 'header.logout' | t }}</span>
+    </button>
+  </mat-menu>
+</mat-toolbar>

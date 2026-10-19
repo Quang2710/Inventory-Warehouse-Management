@@ -1,0 +1,64 @@
+<app-page-header [heading]="'warehouses.title' | t" [subtitle]="'warehouses.subtitle' | t">
+  @if (canCreate()) {
+    <button actions mat-flat-button type="button" (click)="create()">
+      <mat-icon>add</mat-icon>
+      {{ 'warehouses.create' | t }}
+    </button>
+  }
+</app-page-header>
+
+<app-data-table
+  tableId="warehouses"
+  [columns]="columns"
+  [rows]="list.items()"
+  [total]="list.total()"
+  [pageIndex]="list.pageIndex()"
+  [pageSize]="list.params().size"
+  [sort]="list.params().sort"
+  [loading]="list.loading()"
+  [loaded]="list.loaded()"
+  [error]="list.error()"
+  [filtered]="list.hasFilters()"
+  [clickable]="true"
+  [ariaLabel]="'warehouses.title' | t"
+  emptyIcon="warehouse"
+  (page)="list.setPage($event.pageIndex, $event.pageSize)"
+  (sortChange)="list.setSort($event)"
+  (rowClick)="openDetail($event)"
+  (retry)="list.reload()"
+>
+  <ng-container filters>
+    <app-search-field
+      [value]="list.params().q"
+      [placeholder]="'warehouses.searchPlaceholder' | t"
+      (queryChange)="list.setQuery($event)"
+    />
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>{{ 'warehouses.fields.status' | t }}</mat-label>
+      <mat-select
+        [value]="list.params().filters.status"
+        (valueChange)="list.setFilter('status', $event)"
+      >
+        <mat-option [value]="null">{{ 'common.all' | t }}</mat-option>
+        @for (status of statusOptions; track status) {
+          <mat-option [value]="status">{{ statusLabels[status].labelKey | t }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  </ng-container>
+
+  <ng-template appCell="code" let-row
+    ><span class="mono">{{ row.code }}</span></ng-template
+  >
+  <ng-template appCell="binCount" let-row
+    >{{ row.usedBinCount | number }} / {{ row.binCount | number }}</ng-template
+  >
+  <ng-template appCell="skuCount" let-row>{{ row.skuCount | number }}</ng-template>
+  <ng-template appCell="totalQuantity" let-row>{{ row.totalQuantity | number }}</ng-template>
+  <ng-template appCell="totalValue" let-row>{{
+    row.totalValue | currency: 'VND' : 'symbol' : '1.0-0'
+  }}</ng-template>
+  <ng-template appCell="status" let-row
+    ><app-status-chip [status]="statusLabels[row.status]"
+  /></ng-template>
+</app-data-table>

@@ -1,0 +1,110 @@
+<div class="toolbar">
+  <p class="hint">{{ 'locations.hint' | t }}</p>
+  <button mat-button type="button" (click)="expandAll()">
+    <mat-icon>unfold_more</mat-icon>{{ 'locations.expandAll' | t }}
+  </button>
+  <button mat-button type="button" (click)="collapseAll()">
+    <mat-icon>unfold_less</mat-icon>{{ 'locations.collapseAll' | t }}
+  </button>
+  @if (editable()) {
+    <button mat-stroked-button type="button" (click)="add.emit({ parent: null, type: 'ZONE' })">
+      <mat-icon>add</mat-icon>{{ 'locations.addZone' | t }}
+    </button>
+  }
+</div>
+
+@if (roots().length === 0) {
+  <p class="empty">{{ 'locations.empty' | t }}</p>
+} @else {
+  <ul class="tree" role="tree" [attr.aria-label]="'locations.title' | t">
+    @for (node of roots(); track node.location.id) {
+      <ng-container *ngTemplateOutlet="nodeTemplate; context: { $implicit: node }" />
+    }
+  </ul>
+}
+
+<ng-template #nodeTemplate let-node>
+  <li
+    role="treeitem"
+    aria-selected="false"
+    [attr.aria-expanded]="node.children.length ? expanded().has(node.location.id) : null"
+    [attr.aria-level]="node.depth + 1"
+  >
+    <div class="row" [style.padding-left.px]="8 + node.depth * 24">
+      @if (node.children.length) {
+        <button
+          mat-icon-button
+          type="button"
+          class="toggle"
+          (click)="toggle(node.location.id)"
+          [attr.aria-label]="node.location.code"
+        >
+          <mat-icon>{{
+            expanded().has(node.location.id) ? 'expand_more' : 'chevron_right'
+          }}</mat-icon>
+        </button>
+      } @else {
+        <span class="toggle-placeholder"></span>
+      }
+      <mat-icon class="type-icon" aria-hidden="true">{{
+        typeIcons[$any(node.location.type)]
+      }}</mat-icon>
+      <span class="code mono">{{ node.location.code }}</span>
+      <span class="name">{{ node.location.name }}</span>
+      @if (node.location.status === 'INACTIVE') {
+        <app-status-chip [status]="statusLabels.INACTIVE" />
+      }
+      <span class="spacer"></span>
+      <span class="qty">
+        @if (node.location.type === 'BIN') {
+          {{ node.location.quantity | number }} / {{ node.location.capacity | number }}
+        } @else {
+          {{ node.location.quantity | number }}
+        }
+      </span>
+      @if (editable()) {
+        <button
+          mat-icon-button
+          type="button"
+          [matMenuTriggerFor]="menu"
+          [matMenuTriggerData]="{ location: node.location }"
+          [attr.aria-label]="'common.moreActions' | t"
+        >
+          <mat-icon>more_vert</mat-icon>
+        </button>
+      }
+    </div>
+    @if (node.children.length && expanded().has(node.location.id)) {
+      <ul role="group">
+        @for (child of node.children; track child.location.id) {
+          <ng-container *ngTemplateOutlet="nodeTemplate; context: { $implicit: child }" />
+        }
+      </ul>
+    }
+  </li>
+</ng-template>
+
+<mat-menu #menu="matMenu">
+  <ng-template matMenuContent let-location="location">
+    @if (childType[$any(location.type)]; as child) {
+      <button mat-menu-item type="button" (click)="add.emit({ parent: location, type: child })">
+        <mat-icon>add</mat-icon>
+        <span>{{ 'locations.addChild' | t: { type: (typeLabels[child] | t) } }}</span>
+      </button>
+    }
+    @if (location.type === 'ZONE') {
+      <button mat-menu-item type="button" (click)="generate.emit(location)">
+        <mat-icon>auto_awesome_motion</mat-icon>
+        <span>{{ 'locations.generateRack' | t }}</span>
+      </button>
+    }
+    <button mat-menu-item type="button" (click)="edit.emit(location)">
+      <mat-icon>edit</mat-icon>
+      <span>{{ 'common.edit' | t }}</span>
+    </button>
+    <button mat-menu-item type="button" (click)="remove.emit(location)">
+      <mat-icon>delete</mat-icon>
+      <span>{{ 'common.delete' | t }}</span>
+    </button>
+  </ng-template>
+</mat-menu>

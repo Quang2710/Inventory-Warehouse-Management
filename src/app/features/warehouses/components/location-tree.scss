@@ -1,0 +1,73 @@
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.hint {
+  flex: 1 1 240px;
+  margin: 0;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.tree,
+.tree ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tree {
+  border: 1px solid var(--mat-sys-outline-variant);
+  border-radius: var(--mat-sys-corner-medium);
+  background: var(--mat-sys-surface);
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding-right: 8px;
+  border-bottom: 1px solid var(--mat-sys-outline-variant);
+
+  &:hover {
+    background: var(--mat-sys-surface-container-low);
+  }
+}
+
+.toggle-placeholder {
+  display: inline-block;
+  width: 40px;
+}
+
+.type-icon {
+  color: var(--mat-sys-primary);
+}
+
+.code {
+  min-width: 96px;
+}
+
+.name {
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.qty {
+  font: var(--mat-sys-label-large);
+  white-space: nowrap;
+}

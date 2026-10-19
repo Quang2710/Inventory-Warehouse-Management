@@ -1,0 +1,145 @@
+<div class="toolbar">
+  <button
+    mat-icon-button
+    type="button"
+    [matMenuTriggerFor]="languageMenu"
+    [attr.aria-label]="'header.language' | t"
+    [matTooltip]="'header.language' | t"
+  >
+    <mat-icon>translate</mat-icon>
+  </button>
+  <mat-menu #languageMenu="matMenu">
+    @for (option of i18n.languages; track option) {
+      <button
+        mat-menu-item
+        type="button"
+        role="menuitemradio"
+        [attr.aria-checked]="option === i18n.language()"
+        (click)="changeLanguage(option)"
+      >
+        <span [attr.lang]="option">{{ languageLabels[option] | t }}</span>
+      </button>
+    }
+  </mat-menu>
+  <button
+    mat-icon-button
+    type="button"
+    (click)="cycleTheme()"
+    [attr.aria-label]="'header.theme' | t"
+    [matTooltip]="'header.theme' | t"
+  >
+    <mat-icon>{{ themeIcon() }}</mat-icon>
+  </button>
+</div>
+
+<main class="layout">
+  <section class="hero" aria-hidden="true">
+    <mat-icon class="hero__logo">warehouse</mat-icon>
+    <p class="hero__name">{{ 'app.name' | t }}</p>
+    <p class="hero__tagline">{{ 'app.tagline' | t }}</p>
+  </section>
+
+  <section class="panel">
+    <div class="card">
+      <h1>{{ 'auth.login.title' | t }}</h1>
+      <p class="subtitle">{{ 'auth.login.subtitle' | t }}</p>
+
+      @if (notice(); as noticeKey) {
+        <div class="banner banner--info" role="status">
+          <mat-icon aria-hidden="true">info</mat-icon>
+          <span>{{ noticeKey | t }}</span>
+        </div>
+      }
+      @if (errorMessage(); as message) {
+        <div class="banner banner--error" role="alert">
+          <mat-icon aria-hidden="true">error</mat-icon>
+          <span>{{ message }}</span>
+        </div>
+      }
+
+      <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+        <mat-form-field>
+          <mat-label>{{ 'auth.login.username' | t }}</mat-label>
+          <input
+            #usernameInput
+            matInput
+            formControlName="username"
+            autocomplete="username"
+            autocapitalize="none"
+            spellcheck="false"
+          />
+          <mat-icon matPrefix aria-hidden="true">person</mat-icon>
+          @if (form.controls.username.hasError('required')) {
+            <mat-error>{{ 'auth.login.usernameRequired' | t }}</mat-error>
+          }
+        </mat-form-field>
+
+        <mat-form-field>
+          <mat-label>{{ 'auth.login.password' | t }}</mat-label>
+          <input
+            matInput
+            formControlName="password"
+            autocomplete="current-password"
+            [type]="passwordVisible() ? 'text' : 'password'"
+          />
+          <mat-icon matPrefix aria-hidden="true">lock</mat-icon>
+          <button
+            mat-icon-button
+            matSuffix
+            type="button"
+            (click)="passwordVisible.set(!passwordVisible())"
+            [attr.aria-label]="
+              (passwordVisible() ? 'auth.login.hidePassword' : 'auth.login.showPassword') | t
+            "
+            [attr.aria-pressed]="passwordVisible()"
+          >
+            <mat-icon>{{ passwordVisible() ? 'visibility_off' : 'visibility' }}</mat-icon>
+          </button>
+          @if (form.controls.password.hasError('required')) {
+            <mat-error>{{ 'auth.login.passwordRequired' | t }}</mat-error>
+          }
+        </mat-form-field>
+
+        <button mat-flat-button type="submit" class="submit" [disabled]="submitting()">
+          @if (submitting()) {
+            <mat-progress-spinner mode="indeterminate" diameter="20" aria-hidden="true" />
+            <span>{{ 'auth.login.submitting' | t }}</span>
+          } @else {
+            <span>{{ 'auth.login.submit' | t }}</span>
+          }
+        </button>
+      </form>
+    </div>
+
+    @if (demoEnabled && demoAccounts().length > 0) {
+      <div class="card demo">
+        <h2>{{ 'auth.demo.title' | t }}</h2>
+        <p class="subtitle">{{ 'auth.demo.hint' | t }}</p>
+        <ul>
+          @for (account of demoAccounts(); track account.username) {
+            <li>
+              <button
+                type="button"
+                class="demo__account"
+                [disabled]="submitting()"
+                (click)="loginAs(account)"
+                [attr.aria-label]="
+                  'auth.demo.loginAs' | t: { role: (roleLabels[account.role] | t) }
+                "
+              >
+                <mat-icon aria-hidden="true">{{ roleIcons[account.role] }}</mat-icon>
+                <span class="demo__text">
+                  <span class="demo__role">{{ roleLabels[account.role] | t }}</span>
+                  <span class="demo__credentials"
+                    >{{ account.username }} / {{ account.password }}</span
+                  >
+                </span>
+                <mat-icon class="demo__go" aria-hidden="true">arrow_forward</mat-icon>
+              </button>
+            </li>
+          }
+        </ul>
+      </div>
+    }
+  </section>
+</main>

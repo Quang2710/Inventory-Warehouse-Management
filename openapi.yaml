@@ -1,0 +1,3285 @@
+openapi: 3.1.0
+info:
+  title: Inventory & Warehouse Management API
+  version: 0.1.0
+  description: |
+    Contract giữa frontend Angular và backend cho hệ thống quản lý tồn kho & kho hàng (MVP).
+
+    **Quy ước chung**
+    - Danh sách luôn phân trang phía server: `?page=1&size=20&sort=field,asc&q=từ khóa`.
+      `page` bắt đầu từ **1**. Response: `{ items, total, page, size }`.
+    - Lỗi luôn có dạng `ErrorResponse` `{ code, message, details? }`.
+      Mã lỗi (`code`) thường gặp: `VALIDATION_ERROR`, `INVALID_CREDENTIALS`, `ACCOUNT_LOCKED`,
+      `UNAUTHORIZED`, `TOKEN_EXPIRED`, `INVALID_REFRESH_TOKEN`, `FORBIDDEN`, `NOT_FOUND`,
+      `CONFLICT`, `INVALID_STATE`, `INSUFFICIENT_STOCK`, `INTERNAL_ERROR`.
+    - Thời gian dạng ISO-8601 (UTC). Ngày chứng từ dạng `YYYY-MM-DD` (theo giờ Asia/Ho_Chi_Minh).
+    - Tiền tệ: VND, số nguyên.
+    - Phạm vi kho: người dùng có `warehouseIds` khác rỗng chỉ thấy/thao tác dữ liệu của các kho đó
+      (vi phạm → `403 FORBIDDEN`).
+    - Tồn kho chỉ thay đổi qua chứng từ đã duyệt (sinh `StockMovement`). Không cho phép tồn âm.
+      Chứng từ đã duyệt không được sửa/xóa, chỉ hủy (hệ thống sinh bút toán đảo).
+servers:
+  - url: /api
+    description: Cùng origin (proxy hoặc mock MSW)
+security:
+  - bearerAuth: []
+tags:
+  - name: auth
+    description: Xác thực & phiên đăng nhập
+  - name: users
+    description: Quản lý người dùng (Admin)
+  - name: categories
+    description: Danh mục sản phẩm
+  - name: products
+    description: Sản phẩm / SKU
+  - name: warehouses
+    description: Kho hàng
+  - name: stock
+    description: Tồn kho hiện tại
+  - name: goods-receipts
+    description: Phiếu nhập kho
+  - name: goods-issues
+    description: Phiếu xuất kho
+  - name: stock-movements
+    description: Thẻ kho / lịch sử biến động tồn
+  - name: dashboard
+    description: Số liệu tổng quan
+  - name: roles
+    description: Vai trò & ma trận phân quyền
+  - name: transfers
+    description: Chuyển kho
+  - name: stocktakes
+    description: Kiểm kê
+  - name: partners
+    description: Nhà cung cấp & khách hàng
+  - name: audit
+    description: Nhật ký thao tác (audit log)
+
+paths:
+  # ───────────────────────────── AUTH ─────────────────────────────
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Đăng nhập bằng tên đăng nhập & mật khẩu
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Đăng nhập thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '401':
+          description: Sai tên đăng nhập hoặc mật khẩu (`INVALID_CREDENTIALS`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Tài khoản bị khóa (`ACCOUNT_LOCKED`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refreshToken
+      summary: Cấp lại access token bằng refresh token (refresh token được xoay vòng)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshTokenRequest' }
+      responses:
+        '200':
+          description: Cặp token mới
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthTokens' }
+        '401':
+          description: Refresh token không hợp lệ/hết hạn/đã thu hồi (`INVALID_REFRESH_TOKEN`)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Đăng xuất, thu hồi refresh token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshTokenRequest' }
+      responses:
+        '204': { description: Đã đăng xuất }
+
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: getCurrentUser
+      summary: Thông tin người dùng hiện tại kèm quyền
+      responses:
+        '200':
+          description: Người dùng hiện tại
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CurrentUser' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ───────────────────────────── USERS ─────────────────────────────
+  /users:
+    get:
+      tags: [users]
+      operationId: listUsers
+      summary: Danh sách người dùng
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - name: role
+          in: query
+          schema: { $ref: '#/components/schemas/Role' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/UserStatus' }
+      responses:
+        '200':
+          description: Trang người dùng
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [users]
+      operationId: createUser
+      summary: Tạo người dùng
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserCreateRequest' }
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [users]
+      operationId: getUser
+      summary: Chi tiết người dùng
+      responses:
+        '200':
+          description: Người dùng
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [users]
+      operationId: updateUser
+      summary: Cập nhật người dùng (họ tên, email, vai trò, trạng thái)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserUpdateRequest' }
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [users]
+      operationId: deleteUser
+      summary: Xóa người dùng (không cho xóa chính mình)
+      responses:
+        '204': { description: Đã xóa }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /users/{id}/reset-password:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [users]
+      operationId: resetUserPassword
+      summary: Đặt lại mật khẩu cho người dùng
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
+      responses:
+        '204': { description: Đã đặt lại mật khẩu }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # ───────────────────────────── CATEGORIES ─────────────────────────────
+  /categories:
+    get:
+      tags: [categories]
+      operationId: listCategories
+      summary: Danh sách danh mục
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - name: parentId
+          in: query
+          description: Lọc theo danh mục cha. Truyền `root` để lấy danh mục gốc.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Trang danh mục
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CategoryPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [categories]
+      operationId: createCategory
+      summary: Tạo danh mục
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoryRequest' }
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Category' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /categories/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [categories]
+      operationId: getCategory
+      summary: Chi tiết danh mục
+      responses:
+        '200':
+          description: Danh mục
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Category' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [categories]
+      operationId: updateCategory
+      summary: Cập nhật danh mục
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoryRequest' }
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Category' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [categories]
+      operationId: deleteCategory
+      summary: Xóa danh mục (không cho xóa khi còn sản phẩm hoặc danh mục con)
+      responses:
+        '204': { description: Đã xóa }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ───────────────────────────── PRODUCTS ─────────────────────────────
+  /products:
+    get:
+      tags: [products]
+      operationId: listProducts
+      summary: Danh sách sản phẩm
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - name: categoryId
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/ProductStatus' }
+        - name: stockStatus
+          in: query
+          description: Lọc theo tình trạng tồn (tổng mọi kho)
+          schema: { $ref: '#/components/schemas/StockStatus' }
+      responses:
+        '200':
+          description: Trang sản phẩm
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [products]
+      operationId: createProduct
+      summary: Tạo sản phẩm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductRequest' }
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /products/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [products]
+      operationId: getProduct
+      summary: Chi tiết sản phẩm
+      responses:
+        '200':
+          description: Sản phẩm
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [products]
+      operationId: updateProduct
+      summary: Cập nhật sản phẩm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductRequest' }
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [products]
+      operationId: deleteProduct
+      summary: Xóa sản phẩm (không cho xóa khi đã phát sinh chứng từ — chỉ ngừng kinh doanh)
+      responses:
+        '204': { description: Đã xóa }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /products/by-barcode/{barcode}:
+    get:
+      tags: [products]
+      operationId: getProductByBarcode
+      summary: Tìm sản phẩm theo mã vạch (dùng khi quét mã)
+      parameters:
+        - name: barcode
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Sản phẩm
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── WAREHOUSES ─────────────────────────────
+  /warehouses:
+    get:
+      tags: [warehouses]
+      operationId: listWarehouses
+      summary: Danh sách kho
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/WarehouseStatus' }
+        - name: scope
+          in: query
+          description: |
+            `mine` (mặc định): chỉ kho trong phạm vi của người dùng.
+            `all`: mọi kho — chỉ để chọn kho đến khi chuyển kho; thao tác tại kho vẫn kiểm tra phạm vi.
+          schema:
+            type: string
+            enum: [mine, all]
+      responses:
+        '200':
+          description: Trang kho
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WarehousePage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [warehouses]
+      operationId: createWarehouse
+      summary: Tạo kho
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WarehouseRequest' }
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Warehouse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /warehouses/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [warehouses]
+      operationId: getWarehouse
+      summary: Chi tiết kho
+      responses:
+        '200':
+          description: Kho
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Warehouse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [warehouses]
+      operationId: updateWarehouse
+      summary: Cập nhật kho
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WarehouseRequest' }
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Warehouse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [warehouses]
+      operationId: deleteWarehouse
+      summary: Xóa kho (không cho xóa khi còn tồn hoặc đã phát sinh chứng từ)
+      responses:
+        '204': { description: Đã xóa }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ───────────────────────────── STOCK ─────────────────────────────
+  /stock:
+    get:
+      tags: [stock]
+      operationId: listStock
+      summary: Tồn kho hiện tại theo sản phẩm × kho
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - name: warehouseId
+          in: query
+          schema: { type: string }
+        - name: categoryId
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/StockStatus' }
+      responses:
+        '200':
+          description: Trang tồn kho
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StockItemPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /stock/by-product/{productId}:
+    get:
+      tags: [stock]
+      operationId: getStockByProduct
+      summary: Tồn của một sản phẩm ở tất cả các kho
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Danh sách tồn theo kho
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/StockItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ───────────────────────────── GOODS RECEIPTS ─────────────────────────────
+  /goods-receipts:
+    get:
+      tags: [goods-receipts]
+      operationId: listGoodsReceipts
+      summary: Danh sách phiếu nhập
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - $ref: '#/components/parameters/DocumentStatusFilter'
+        - $ref: '#/components/parameters/WarehouseFilter'
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+      responses:
+        '200':
+          description: Trang phiếu nhập
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsReceiptPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [goods-receipts]
+      operationId: createGoodsReceipt
+      summary: Tạo phiếu nhập (trạng thái DRAFT)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GoodsReceiptRequest' }
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsReceipt' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /goods-receipts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [goods-receipts]
+      operationId: getGoodsReceipt
+      summary: Chi tiết phiếu nhập
+      responses:
+        '200':
+          description: Phiếu nhập
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsReceipt' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [goods-receipts]
+      operationId: updateGoodsReceipt
+      summary: Sửa phiếu nhập (chỉ khi DRAFT hoặc REJECTED)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GoodsReceiptRequest' }
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsReceipt' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [goods-receipts]
+      operationId: deleteGoodsReceipt
+      summary: Xóa phiếu nhập (chỉ khi DRAFT)
+      responses:
+        '204': { description: Đã xóa }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+
+  /goods-receipts/{id}/submit:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [goods-receipts]
+      operationId: submitGoodsReceipt
+      summary: Gửi duyệt (DRAFT/REJECTED → PENDING)
+      responses:
+        '200':
+          description: Phiếu sau khi gửi duyệt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsReceipt' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+
+  /goods-receipts/{id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [goods-receipts]
+      operationId: approveGoodsReceipt
+      summary: Duyệt phiếu nhập (PENDING → APPROVED), cộng tồn kho
+      responses:
+        '200':
+          description: Phiếu đã duyệt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsReceipt' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+
+  /goods-receipts/{id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [goods-receipts]
+      operationId: rejectGoodsReceipt
+      summary: Từ chối phiếu nhập (PENDING → REJECTED)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequest' }
+      responses:
+        '200':
+          description: Phiếu bị từ chối
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsReceipt' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /goods-receipts/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [goods-receipts]
+      operationId: cancelGoodsReceipt
+      summary: Hủy phiếu nhập đã duyệt (APPROVED → CANCELLED), sinh bút toán đảo trừ tồn
+      description: Trả `422 INSUFFICIENT_STOCK` nếu hủy làm tồn âm (hàng đã được xuất).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequest' }
+      responses:
+        '200':
+          description: Phiếu đã hủy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsReceipt' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # ───────────────────────────── GOODS ISSUES ─────────────────────────────
+  /goods-issues:
+    get:
+      tags: [goods-issues]
+      operationId: listGoodsIssues
+      summary: Danh sách phiếu xuất
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - $ref: '#/components/parameters/DocumentStatusFilter'
+        - $ref: '#/components/parameters/WarehouseFilter'
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - name: reason
+          in: query
+          schema: { $ref: '#/components/schemas/IssueReason' }
+      responses:
+        '200':
+          description: Trang phiếu xuất
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsIssuePage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [goods-issues]
+      operationId: createGoodsIssue
+      summary: Tạo phiếu xuất (trạng thái DRAFT)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GoodsIssueRequest' }
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsIssue' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /goods-issues/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [goods-issues]
+      operationId: getGoodsIssue
+      summary: Chi tiết phiếu xuất
+      responses:
+        '200':
+          description: Phiếu xuất
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsIssue' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [goods-issues]
+      operationId: updateGoodsIssue
+      summary: Sửa phiếu xuất (chỉ khi DRAFT hoặc REJECTED)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GoodsIssueRequest' }
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsIssue' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [goods-issues]
+      operationId: deleteGoodsIssue
+      summary: Xóa phiếu xuất (chỉ khi DRAFT)
+      responses:
+        '204': { description: Đã xóa }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+
+  /goods-issues/{id}/submit:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [goods-issues]
+      operationId: submitGoodsIssue
+      summary: Gửi duyệt (DRAFT/REJECTED → PENDING)
+      responses:
+        '200':
+          description: Phiếu sau khi gửi duyệt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsIssue' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+
+  /goods-issues/{id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [goods-issues]
+      operationId: approveGoodsIssue
+      summary: Duyệt phiếu xuất (PENDING → APPROVED), kiểm tra và trừ tồn kho
+      description: Trả `422 INSUFFICIENT_STOCK` (details theo `lines[i].quantity`) nếu không đủ tồn.
+      responses:
+        '200':
+          description: Phiếu đã duyệt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsIssue' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /goods-issues/{id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [goods-issues]
+      operationId: rejectGoodsIssue
+      summary: Từ chối phiếu xuất (PENDING → REJECTED)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequest' }
+      responses:
+        '200':
+          description: Phiếu bị từ chối
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsIssue' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /goods-issues/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [goods-issues]
+      operationId: cancelGoodsIssue
+      summary: Hủy phiếu xuất đã duyệt (APPROVED → CANCELLED), sinh bút toán đảo cộng lại tồn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequest' }
+      responses:
+        '200':
+          description: Phiếu đã hủy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoodsIssue' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # ───────────────────────────── STOCK MOVEMENTS ─────────────────────────────
+  /stock-movements:
+    get:
+      tags: [stock-movements]
+      operationId: listStockMovements
+      summary: Lịch sử biến động tồn (thẻ kho)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - name: productId
+          in: query
+          schema: { type: string }
+        - $ref: '#/components/parameters/WarehouseFilter'
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/MovementType' }
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+      responses:
+        '200':
+          description: Trang biến động tồn
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StockMovementPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ───────────────────────────── DASHBOARD ─────────────────────────────
+  /dashboard/summary:
+    get:
+      tags: [dashboard]
+      operationId: getDashboardSummary
+      summary: Chỉ số tổng quan
+      parameters:
+        - $ref: '#/components/parameters/WarehouseFilter'
+      responses:
+        '200':
+          description: Chỉ số tổng quan
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /dashboard/movement-trend:
+    get:
+      tags: [dashboard]
+      operationId: getMovementTrend
+      summary: Xu hướng nhập/xuất theo ngày
+      parameters:
+        - $ref: '#/components/parameters/WarehouseFilter'
+        - name: days
+          in: query
+          schema: { type: integer, minimum: 7, maximum: 365, default: 30 }
+      responses:
+        '200':
+          description: Chuỗi điểm theo ngày (tăng dần)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MovementTrendPoint' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /dashboard/low-stock:
+    get:
+      tags: [dashboard]
+      operationId: getLowStock
+      summary: Các dòng tồn dưới mức tối thiểu (ưu tiên hết hàng)
+      parameters:
+        - $ref: '#/components/parameters/WarehouseFilter'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+      responses:
+        '200':
+          description: Danh sách tồn thấp
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/StockItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ───────────────────────────── ROLES ─────────────────────────────
+  /roles:
+    get:
+      tags: [roles]
+      operationId: listRoles
+      summary: Danh sách vai trò kèm ma trận quyền
+      responses:
+        '200':
+          description: Vai trò
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RoleDefinition' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /roles/{role}/permissions:
+    put:
+      tags: [roles]
+      operationId: updateRolePermissions
+      summary: Cập nhật quyền của một vai trò (vai trò ADMIN luôn đủ quyền, không sửa được)
+      parameters:
+        - name: role
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Role' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RolePermissionsRequest' }
+      responses:
+        '200':
+          description: Vai trò sau khi cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoleDefinition' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # ───────────────────────────── LOCATIONS ─────────────────────────────
+  /warehouses/{id}/locations:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [warehouses]
+      operationId: listLocations
+      summary: Toàn bộ vị trí của kho (danh sách phẳng, sắp theo đường dẫn)
+      parameters:
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/LocationType' }
+      responses:
+        '200':
+          description: Vị trí
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Location' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [warehouses]
+      operationId: createLocation
+      summary: Tạo vị trí (khu → kệ → tầng → ô)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LocationRequest' }
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Location' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /warehouses/{id}/locations/generate:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [warehouses]
+      operationId: generateRack
+      summary: Tạo nhanh một kệ gồm N tầng × M ô trong một khu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenerateRackRequest' }
+      responses:
+        '201':
+          description: Các vị trí vừa tạo (kệ, tầng, ô)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Location' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /warehouses/{id}/map:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [warehouses]
+      operationId: getWarehouseMap
+      summary: Sơ đồ kho — khu › kệ › tầng › ô kèm mức lấp đầy
+      responses:
+        '200':
+          description: Sơ đồ kho
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WarehouseMap' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /locations/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [warehouses]
+      operationId: updateLocation
+      summary: Cập nhật tên / sức chứa / trạng thái vị trí
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LocationUpdateRequest' }
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Location' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [warehouses]
+      operationId: deleteLocation
+      summary: Xóa vị trí (không cho xóa khi còn vị trí con hoặc còn tồn)
+      responses:
+        '204': { description: Đã xóa }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /stock/bins:
+    get:
+      tags: [stock]
+      operationId: listBinStock
+      summary: Tồn theo ô (vị trí lưu trữ)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - $ref: '#/components/parameters/WarehouseFilter'
+        - name: locationId
+          in: query
+          description: Lọc theo vị trí (gồm mọi ô con nếu là khu/kệ/tầng)
+          schema: { type: string }
+        - name: productId
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Trang tồn theo ô
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BinStockPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ───────────────────────────── TRANSFERS ─────────────────────────────
+  /transfers:
+    get:
+      tags: [transfers]
+      operationId: listTransfers
+      summary: Danh sách phiếu chuyển kho
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/TransferStatus' }
+        - name: fromWarehouseId
+          in: query
+          schema: { type: string }
+        - name: toWarehouseId
+          in: query
+          schema: { type: string }
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+      responses:
+        '200':
+          description: Trang phiếu chuyển kho
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransferPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [transfers]
+      operationId: createTransfer
+      summary: Tạo phiếu chuyển kho (DRAFT)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransferRequest' }
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transfer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /transfers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [transfers]
+      operationId: getTransfer
+      summary: Chi tiết phiếu chuyển kho
+      responses:
+        '200':
+          description: Phiếu chuyển kho
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transfer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [transfers]
+      operationId: updateTransfer
+      summary: Sửa phiếu chuyển kho (chỉ khi DRAFT)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransferRequest' }
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transfer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [transfers]
+      operationId: deleteTransfer
+      summary: Xóa phiếu chuyển kho (chỉ khi DRAFT)
+      responses:
+        '204': { description: Đã xóa }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+
+  /transfers/{id}/ship:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [transfers]
+      operationId: shipTransfer
+      summary: Xuất hàng đi (DRAFT → IN_TRANSIT), trừ tồn kho đi theo ô
+      description: Trả `422 INSUFFICIENT_STOCK` (details theo `lines.<i>.quantity`) nếu không đủ tồn.
+      responses:
+        '200':
+          description: Phiếu đang vận chuyển
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transfer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /transfers/{id}/receive:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [transfers]
+      operationId: receiveTransfer
+      summary: Xác nhận nhận hàng (IN_TRANSIT → RECEIVED), cộng tồn kho đến
+      description: Số nhận được ít hơn số xuất được ghi nhận là hao hụt vận chuyển.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransferReceiveRequest' }
+      responses:
+        '200':
+          description: Phiếu đã nhận
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transfer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /transfers/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [transfers]
+      operationId: cancelTransfer
+      summary: Hủy phiếu đang vận chuyển — hàng hoàn về kho đi (bút toán đảo)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequest' }
+      responses:
+        '200':
+          description: Phiếu đã hủy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transfer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # ───────────────────────────── STOCKTAKES ─────────────────────────────
+  /stocktakes:
+    get:
+      tags: [stocktakes]
+      operationId: listStocktakes
+      summary: Danh sách phiên kiểm kê
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/StocktakeStatus' }
+        - $ref: '#/components/parameters/WarehouseFilter'
+      responses:
+        '200':
+          description: Trang phiên kiểm kê
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StocktakePage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [stocktakes]
+      operationId: createStocktake
+      summary: Mở phiên kiểm kê — chốt số tồn hệ thống theo ô trong phạm vi
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StocktakeRequest' }
+      responses:
+        '201':
+          description: Phiên kiểm kê (IN_PROGRESS)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stocktake' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /stocktakes/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [stocktakes]
+      operationId: getStocktake
+      summary: Chi tiết phiên kiểm kê
+      responses:
+        '200':
+          description: Phiên kiểm kê
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stocktake' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /stocktakes/{id}/lines:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [stocktakes]
+      operationId: listStocktakeLines
+      summary: Toàn bộ dòng kiểm kê (không phân trang — để tải về đếm offline)
+      description: Với phiên đếm "mù" (`blind`), `expectedQuantity` là null nếu người gọi không có quyền duyệt.
+      responses:
+        '200':
+          description: Dòng kiểm kê
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/StocktakeLine' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /stocktakes/{id}/counts:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [stocktakes]
+      operationId: submitStocktakeCounts
+      summary: Gửi số đếm (theo lô, idempotent) — dùng cho đồng bộ hàng đợi offline
+      description: |
+        Mỗi entry ghi đè số đếm của dòng (giá trị tuyệt đối, không cộng dồn).
+        Xung đột giữa các thiết bị giải quyết theo `countedAt` mới nhất; entry cũ hơn bị bỏ qua (`STALE`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StocktakeCountBatch' }
+      responses:
+        '200':
+          description: Kết quả áp dụng từng entry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StocktakeCountResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /stocktakes/{id}/submit:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [stocktakes]
+      operationId: submitStocktake
+      summary: Kết thúc đếm, chuyển sang chờ duyệt (IN_PROGRESS → SUBMITTED)
+      responses:
+        '200':
+          description: Phiên chờ duyệt
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stocktake' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+
+  /stocktakes/{id}/reopen:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [stocktakes]
+      operationId: reopenStocktake
+      summary: Mở lại để đếm bổ sung (SUBMITTED → IN_PROGRESS)
+      responses:
+        '200':
+          description: Phiên đang đếm
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stocktake' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+
+  /stocktakes/{id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [stocktakes]
+      operationId: approveStocktake
+      summary: Duyệt kết quả kiểm kê (SUBMITTED → COMPLETED), sinh bút toán điều chỉnh tồn
+      description: Chênh lệch = số đếm − tồn hệ thống hiện tại của ô. Dòng chưa đếm không được điều chỉnh.
+      responses:
+        '200':
+          description: Phiên đã hoàn tất
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stocktake' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+
+  /stocktakes/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [stocktakes]
+      operationId: cancelStocktake
+      summary: Hủy phiên kiểm kê chưa hoàn tất
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequest' }
+      responses:
+        '200':
+          description: Phiên đã hủy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stocktake' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InvalidState' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  # ───────────────────────────── SUPPLIERS ─────────────────────────────
+  /suppliers:
+    get:
+      tags: [partners]
+      operationId: listSuppliers
+      summary: Danh sách nhà cung cấp
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/PartnerStatus' }
+      responses:
+        '200':
+          description: Trang nhà cung cấp
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupplierPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [partners]
+      operationId: createSupplier
+      summary: Tạo nhà cung cấp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupplierRequest' }
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Supplier' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /suppliers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [partners]
+      operationId: getSupplier
+      summary: Chi tiết nhà cung cấp
+      responses:
+        '200':
+          description: Nhà cung cấp
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Supplier' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [partners]
+      operationId: updateSupplier
+      summary: Cập nhật nhà cung cấp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupplierRequest' }
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Supplier' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [partners]
+      operationId: deleteSupplier
+      summary: Xóa nhà cung cấp (đã phát sinh phiếu nhập thì chỉ ngừng giao dịch)
+      responses:
+        '204': { description: Đã xóa }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ───────────────────────────── CUSTOMERS ─────────────────────────────
+  /customers:
+    get:
+      tags: [partners]
+      operationId: listCustomers
+      summary: Danh sách khách hàng
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/PartnerStatus' }
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/CustomerType' }
+      responses:
+        '200':
+          description: Trang khách hàng
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [partners]
+      operationId: createCustomer
+      summary: Tạo khách hàng
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerRequest' }
+      responses:
+        '201':
+          description: Đã tạo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /customers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [partners]
+      operationId: getCustomer
+      summary: Chi tiết khách hàng
+      responses:
+        '200':
+          description: Khách hàng
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [partners]
+      operationId: updateCustomer
+      summary: Cập nhật khách hàng
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerRequest' }
+      responses:
+        '200':
+          description: Đã cập nhật
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Customer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [partners]
+      operationId: deleteCustomer
+      summary: Xóa khách hàng (đã phát sinh phiếu xuất thì chỉ ngừng giao dịch)
+      responses:
+        '204': { description: Đã xóa }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # ───────────────────────────── AUDIT LOG ─────────────────────────────
+  /audit-logs:
+    get:
+      tags: [audit]
+      operationId: listAuditLogs
+      summary: Nhật ký thao tác hệ thống
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - name: userId
+          in: query
+          schema: { type: string }
+        - name: action
+          in: query
+          schema: { $ref: '#/components/schemas/AuditAction' }
+        - name: entityType
+          in: query
+          schema: { $ref: '#/components/schemas/AuditEntityType' }
+        - name: entityId
+          in: query
+          schema: { type: string }
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+      responses:
+        '200':
+          description: Trang nhật ký
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditLogPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /audit-logs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [audit]
+      operationId: getAuditLog
+      summary: Chi tiết một bản ghi nhật ký
+      responses:
+        '200':
+          description: Bản ghi nhật ký
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditLog' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    Page:
+      name: page
+      in: query
+      description: Số trang, bắt đầu từ 1
+      schema: { type: integer, minimum: 1, default: 1 }
+    Size:
+      name: size
+      in: query
+      description: Số bản ghi mỗi trang
+      schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
+    Sort:
+      name: sort
+      in: query
+      description: 'Sắp xếp dạng `field,asc|desc`, ví dụ `name,asc`'
+      schema: { type: string, pattern: '^[A-Za-z0-9_.]+,(asc|desc)$' }
+    Q:
+      name: q
+      in: query
+      description: Từ khóa tìm kiếm (không phân biệt hoa thường, dấu)
+      schema: { type: string }
+    DocumentStatusFilter:
+      name: status
+      in: query
+      schema: { $ref: '#/components/schemas/DocumentStatus' }
+    WarehouseFilter:
+      name: warehouseId
+      in: query
+      schema: { type: string }
+    FromDate:
+      name: from
+      in: query
+      description: Từ ngày (bao gồm), `YYYY-MM-DD`
+      schema: { type: string, format: date }
+    ToDate:
+      name: to
+      in: query
+      description: Đến ngày (bao gồm), `YYYY-MM-DD`
+      schema: { type: string, format: date }
+
+  responses:
+    Unauthorized:
+      description: Chưa đăng nhập hoặc access token hết hạn (`UNAUTHORIZED` / `TOKEN_EXPIRED`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Không đủ quyền (`FORBIDDEN`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Không tìm thấy (`NOT_FOUND`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Conflict:
+      description: Xung đột dữ liệu, ví dụ còn dữ liệu phụ thuộc (`CONFLICT`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    InvalidState:
+      description: Trạng thái chứng từ không cho phép thao tác (`INVALID_STATE`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    ValidationError:
+      description: Dữ liệu không hợp lệ (`VALIDATION_ERROR` / `INSUFFICIENT_STOCK`), lỗi theo field trong `details`
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  schemas:
+    # ── Chung ──
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Mã lỗi máy đọc được
+          examples: [VALIDATION_ERROR]
+        message:
+          type: string
+          description: Thông điệp cho người dùng
+        details:
+          type: object
+          description: Lỗi theo field. Key là đường dẫn field (vd `lines.0.quantity`).
+          additionalProperties:
+            type: array
+            items: { type: string }
+
+    PageMeta:
+      type: object
+      required: [total, page, size]
+      properties:
+        total: { type: integer, minimum: 0, description: Tổng số bản ghi khớp bộ lọc }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1 }
+
+    UserRef:
+      type: object
+      required: [id, fullName]
+      properties:
+        id: { type: string }
+        fullName: { type: string }
+
+    ReasonRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 500 }
+
+    # ── Auth & RBAC ──
+    Role:
+      type: string
+      enum: [ADMIN, WAREHOUSE_MANAGER, WAREHOUSE_STAFF, ACCOUNTANT]
+      description: |
+        - ADMIN: quản trị người dùng, phân quyền, cấu hình
+        - WAREHOUSE_MANAGER: quản lý kho — duyệt phiếu, kiểm kê, báo cáo
+        - WAREHOUSE_STAFF: nhân viên kho — nhập, xuất, chuyển kho, quét mã
+        - ACCOUNTANT: kế toán / mua hàng — đơn mua, nhà cung cấp, giá vốn
+
+    Permission:
+      type: string
+      enum:
+        - dashboard:view
+        - user:read
+        - user:write
+        - role:read
+        - role:write
+        - audit:read
+        - category:read
+        - category:write
+        - product:read
+        - product:write
+        - warehouse:read
+        - warehouse:write
+        - stock:read
+        - goods-receipt:read
+        - goods-receipt:write
+        - goods-receipt:approve
+        - goods-issue:read
+        - goods-issue:write
+        - goods-issue:approve
+        - stock-movement:read
+        - transfer:read
+        - transfer:write
+        - transfer:receive
+        - stocktake:read
+        - stocktake:write
+        - stocktake:count
+        - stocktake:approve
+        - supplier:read
+        - supplier:write
+        - customer:read
+        - customer:write
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, minLength: 1 }
+        password: { type: string, minLength: 1 }
+
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string }
+
+    AuthTokens:
+      type: object
+      required: [accessToken, refreshToken, tokenType, expiresIn]
+      properties:
+        accessToken: { type: string, description: JWT access token }
+        refreshToken: { type: string, description: Refresh token (dùng một lần, được xoay vòng) }
+        tokenType:
+          type: string
+          enum: [Bearer]
+        expiresIn: { type: integer, description: Thời hạn access token (giây) }
+
+    LoginResponse:
+      allOf:
+        - $ref: '#/components/schemas/AuthTokens'
+        - type: object
+          required: [user]
+          properties:
+            user: { $ref: '#/components/schemas/CurrentUser' }
+
+    CurrentUser:
+      type: object
+      required: [id, username, fullName, email, role, permissions, warehouseIds]
+      properties:
+        id: { type: string }
+        username: { type: string }
+        fullName: { type: string }
+        email: { type: string, format: email }
+        role: { $ref: '#/components/schemas/Role' }
+        permissions:
+          type: array
+          items: { $ref: '#/components/schemas/Permission' }
+        warehouseIds:
+          type: array
+          description: Kho được phép thao tác (rỗng = mọi kho)
+          items: { type: string }
+        avatarUrl: { type: string, format: uri }
+
+    # ── Users ──
+    UserStatus:
+      type: string
+      enum: [ACTIVE, LOCKED]
+
+    User:
+      type: object
+      required: [id, username, fullName, email, role, status, warehouseIds, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        username: { type: string }
+        fullName: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        status: { $ref: '#/components/schemas/UserStatus' }
+        warehouseIds:
+          type: array
+          description: Kho được phép thao tác (rỗng = mọi kho)
+          items: { type: string }
+        lastLoginAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    UserPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/User' }
+
+    UserCreateRequest:
+      type: object
+      required: [username, password, fullName, email, role]
+      properties:
+        username: { type: string, pattern: '^[a-z0-9._-]{3,32}$' }
+        password: { type: string, minLength: 8 }
+        fullName: { type: string, minLength: 1, maxLength: 100 }
+        email: { type: string, format: email }
+        phone: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        warehouseIds:
+          type: array
+          items: { type: string }
+
+    UserUpdateRequest:
+      type: object
+      required: [fullName, email, role, status]
+      properties:
+        fullName: { type: string, minLength: 1, maxLength: 100 }
+        email: { type: string, format: email }
+        phone: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        status: { $ref: '#/components/schemas/UserStatus' }
+        warehouseIds:
+          type: array
+          items: { type: string }
+
+    ResetPasswordRequest:
+      type: object
+      required: [newPassword]
+      properties:
+        newPassword: { type: string, minLength: 8 }
+
+    # ── Categories ──
+    Category:
+      type: object
+      required: [id, code, name, productCount, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        name: { type: string }
+        parentId: { type: [string, 'null'] }
+        parentName: { type: [string, 'null'] }
+        description: { type: string }
+        productCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CategoryPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Category' }
+
+    CategoryRequest:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string, pattern: '^[A-Z0-9_-]{2,20}$' }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        parentId: { type: [string, 'null'] }
+        description: { type: string, maxLength: 500 }
+
+    # ── Products ──
+    ProductStatus:
+      type: string
+      enum: [ACTIVE, INACTIVE]
+
+    Product:
+      type: object
+      required:
+        - id
+        - sku
+        - name
+        - categoryId
+        - categoryName
+        - unit
+        - costPrice
+        - salePrice
+        - minStock
+        - trackLot
+        - trackExpiry
+        - status
+        - totalStock
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string }
+        sku: { type: string }
+        barcode: { type: string }
+        name: { type: string }
+        categoryId: { type: string }
+        categoryName: { type: string }
+        unit: { type: string, description: Đơn vị tính (cái, hộp, thùng, kg…) }
+        costPrice:
+          type: integer
+          minimum: 0
+          description: Giá nhập tham chiếu (VND), mặc định khi lập phiếu nhập. Giá vốn bình quân thực tế theo kho nằm ở StockItem.averageCost
+        salePrice: { type: integer, minimum: 0, description: Giá bán (VND) }
+        minStock: { type: integer, minimum: 0, description: Tồn tối thiểu (mỗi kho) }
+        maxStock: { type: integer, minimum: 0 }
+        trackLot: { type: boolean, description: Quản lý theo lô }
+        trackExpiry: { type: boolean, description: Quản lý hạn sử dụng }
+        status: { $ref: '#/components/schemas/ProductStatus' }
+        description: { type: string }
+        imageUrl: { type: string, format: uri }
+        totalStock: { type: integer, description: Tổng tồn ở mọi kho }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ProductPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Product' }
+
+    ProductRequest:
+      type: object
+      required:
+        [sku, name, categoryId, unit, costPrice, salePrice, minStock, trackLot, trackExpiry, status]
+      properties:
+        sku: { type: string, pattern: '^[A-Z0-9-]{3,32}$' }
+        barcode: { type: string, pattern: '^[0-9]{8,14}$' }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        categoryId: { type: string }
+        unit: { type: string, minLength: 1, maxLength: 20 }
+        costPrice: { type: integer, minimum: 0 }
+        salePrice: { type: integer, minimum: 0 }
+        minStock: { type: integer, minimum: 0 }
+        maxStock: { type: integer, minimum: 0 }
+        trackLot: { type: boolean }
+        trackExpiry: { type: boolean }
+        status: { $ref: '#/components/schemas/ProductStatus' }
+        description: { type: string, maxLength: 2000 }
+        imageUrl: { type: string, format: uri }
+
+    # ── Warehouses ──
+    WarehouseStatus:
+      type: string
+      enum: [ACTIVE, INACTIVE]
+
+    Warehouse:
+      type: object
+      required:
+        - id
+        - code
+        - name
+        - address
+        - status
+        - skuCount
+        - totalQuantity
+        - totalValue
+        - binCount
+        - usedBinCount
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string }
+        code: { type: string }
+        name: { type: string }
+        address: { type: string }
+        phone: { type: string }
+        managerName: { type: string }
+        status: { $ref: '#/components/schemas/WarehouseStatus' }
+        skuCount: { type: integer, description: Số SKU đang có tồn > 0 }
+        totalQuantity: { type: integer }
+        totalValue: { type: integer, description: Giá trị tồn (VND) }
+        binCount: { type: integer, description: Số ô lưu trữ đang hoạt động }
+        usedBinCount: { type: integer, description: Số ô đang có hàng }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    WarehousePage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Warehouse' }
+
+    WarehouseRequest:
+      type: object
+      required: [code, name, address, status]
+      properties:
+        code: { type: string, pattern: '^[A-Z0-9_-]{2,20}$' }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        address: { type: string, minLength: 1, maxLength: 300 }
+        phone: { type: string }
+        managerName: { type: string }
+        status: { $ref: '#/components/schemas/WarehouseStatus' }
+
+    # ── Stock ──
+    StockStatus:
+      type: string
+      enum: [IN_STOCK, LOW_STOCK, OUT_OF_STOCK]
+      description: 'OUT_OF_STOCK: tồn = 0; LOW_STOCK: 0 < tồn < minStock; IN_STOCK: còn lại'
+
+    StockItem:
+      type: object
+      required:
+        - id
+        - productId
+        - sku
+        - productName
+        - unit
+        - categoryName
+        - warehouseId
+        - warehouseCode
+        - warehouseName
+        - quantity
+        - minStock
+        - averageCost
+        - stockValue
+        - status
+      properties:
+        id: { type: string }
+        productId: { type: string }
+        sku: { type: string }
+        productName: { type: string }
+        unit: { type: string }
+        categoryName: { type: string }
+        warehouseId: { type: string }
+        warehouseCode: { type: string }
+        warehouseName: { type: string }
+        quantity: { type: integer, minimum: 0 }
+        minStock: { type: integer, minimum: 0 }
+        averageCost: { type: integer, description: Giá vốn bình quân gia quyền tại kho (VND) }
+        stockValue: { type: integer, description: quantity × averageCost }
+        status: { $ref: '#/components/schemas/StockStatus' }
+        lastMovementAt: { type: string, format: date-time }
+
+    StockItemPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/StockItem' }
+
+    # ── Chứng từ ──
+    DocumentStatus:
+      type: string
+      enum: [DRAFT, PENDING, APPROVED, REJECTED, CANCELLED]
+      description: |
+        DRAFT → PENDING (gửi duyệt) → APPROVED (ghi sổ tồn) | REJECTED (sửa lại rồi gửi duyệt).
+        APPROVED → CANCELLED (hủy bằng bút toán đảo).
+
+    DocumentType:
+      type: string
+      enum: [GOODS_RECEIPT, GOODS_ISSUE, TRANSFER, STOCKTAKE, ADJUSTMENT]
+
+    DocumentAudit:
+      type: object
+      required: [createdBy, createdAt, updatedAt]
+      properties:
+        createdBy: { $ref: '#/components/schemas/UserRef' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        submittedAt: { type: string, format: date-time }
+        approvedBy: { $ref: '#/components/schemas/UserRef' }
+        approvedAt: { type: string, format: date-time }
+        rejectedBy: { $ref: '#/components/schemas/UserRef' }
+        rejectedAt: { type: string, format: date-time }
+        rejectedReason: { type: string }
+        cancelledBy: { $ref: '#/components/schemas/UserRef' }
+        cancelledAt: { type: string, format: date-time }
+        cancelReason: { type: string }
+
+    # ── Goods receipts ──
+    GoodsReceiptLine:
+      type: object
+      required: [id, productId, sku, productName, unit, quantity, unitCost, amount]
+      properties:
+        id: { type: string }
+        productId: { type: string }
+        sku: { type: string }
+        productName: { type: string }
+        unit: { type: string }
+        quantity: { type: integer, minimum: 1 }
+        unitCost: { type: integer, minimum: 0, description: Đơn giá nhập (VND) }
+        amount: { type: integer, description: quantity × unitCost }
+        lotNumber: { type: string }
+        expiryDate: { type: string, format: date }
+
+    GoodsReceiptLineRequest:
+      type: object
+      required: [productId, quantity, unitCost]
+      properties:
+        productId: { type: string }
+        quantity: { type: integer, minimum: 1 }
+        unitCost: { type: integer, minimum: 0 }
+        lotNumber: { type: string, maxLength: 50 }
+        expiryDate: { type: string, format: date }
+
+    GoodsReceiptSummary:
+      type: object
+      required:
+        - id
+        - code
+        - warehouseId
+        - warehouseName
+        - supplierName
+        - receiptDate
+        - status
+        - lineCount
+        - totalQuantity
+        - totalAmount
+        - createdBy
+        - createdAt
+      properties:
+        id: { type: string }
+        code: { type: string, description: 'Mã phiếu, vd PN-202610-0001' }
+        warehouseId: { type: string }
+        warehouseName: { type: string }
+        supplierId: { type: [string, 'null'] }
+        supplierName: { type: string }
+        referenceNo: { type: string, description: Số đơn mua / hóa đơn tham chiếu }
+        receiptDate: { type: string, format: date }
+        status: { $ref: '#/components/schemas/DocumentStatus' }
+        lineCount: { type: integer }
+        totalQuantity: { type: integer }
+        totalAmount: { type: integer }
+        createdBy: { $ref: '#/components/schemas/UserRef' }
+        createdAt: { type: string, format: date-time }
+
+    GoodsReceipt:
+      allOf:
+        - $ref: '#/components/schemas/GoodsReceiptSummary'
+        - $ref: '#/components/schemas/DocumentAudit'
+        - type: object
+          required: [lines]
+          properties:
+            note: { type: string }
+            lines:
+              type: array
+              items: { $ref: '#/components/schemas/GoodsReceiptLine' }
+
+    GoodsReceiptPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/GoodsReceiptSummary' }
+
+    GoodsReceiptRequest:
+      type: object
+      required: [warehouseId, supplierName, receiptDate, lines]
+      properties:
+        warehouseId: { type: string }
+        supplierId: { type: [string, 'null'] }
+        supplierName: { type: string, minLength: 1, maxLength: 200 }
+        referenceNo: { type: string, maxLength: 50 }
+        receiptDate: { type: string, format: date }
+        note: { type: string, maxLength: 1000 }
+        lines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/GoodsReceiptLineRequest' }
+
+    # ── Goods issues ──
+    IssueReason:
+      type: string
+      enum: [SALE, RETURN_TO_SUPPLIER, INTERNAL_USE, DAMAGED, OTHER]
+
+    GoodsIssueLine:
+      type: object
+      required: [id, productId, sku, productName, unit, quantity, unitPrice, amount]
+      properties:
+        id: { type: string }
+        productId: { type: string }
+        sku: { type: string }
+        productName: { type: string }
+        unit: { type: string }
+        quantity: { type: integer, minimum: 1 }
+        unitPrice: { type: integer, minimum: 0, description: Đơn giá xuất/bán (VND) }
+        amount: { type: integer, description: quantity × unitPrice }
+        unitCost: { type: integer, description: Giá vốn tại thời điểm duyệt (chỉ có khi đã duyệt) }
+
+    GoodsIssueLineRequest:
+      type: object
+      required: [productId, quantity, unitPrice]
+      properties:
+        productId: { type: string }
+        quantity: { type: integer, minimum: 1 }
+        unitPrice: { type: integer, minimum: 0 }
+
+    GoodsIssueSummary:
+      type: object
+      required:
+        - id
+        - code
+        - warehouseId
+        - warehouseName
+        - customerName
+        - reason
+        - issueDate
+        - status
+        - lineCount
+        - totalQuantity
+        - totalAmount
+        - createdBy
+        - createdAt
+      properties:
+        id: { type: string }
+        code: { type: string, description: 'Mã phiếu, vd PX-202610-0001' }
+        warehouseId: { type: string }
+        warehouseName: { type: string }
+        customerId: { type: [string, 'null'] }
+        customerName: { type: string, description: Khách hàng / bộ phận nhận }
+        reason: { $ref: '#/components/schemas/IssueReason' }
+        referenceNo: { type: string, description: Số đơn bán tham chiếu }
+        issueDate: { type: string, format: date }
+        status: { $ref: '#/components/schemas/DocumentStatus' }
+        lineCount: { type: integer }
+        totalQuantity: { type: integer }
+        totalAmount: { type: integer }
+        createdBy: { $ref: '#/components/schemas/UserRef' }
+        createdAt: { type: string, format: date-time }
+
+    GoodsIssue:
+      allOf:
+        - $ref: '#/components/schemas/GoodsIssueSummary'
+        - $ref: '#/components/schemas/DocumentAudit'
+        - type: object
+          required: [lines]
+          properties:
+            note: { type: string }
+            lines:
+              type: array
+              items: { $ref: '#/components/schemas/GoodsIssueLine' }
+
+    GoodsIssuePage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/GoodsIssueSummary' }
+
+    GoodsIssueRequest:
+      type: object
+      required: [warehouseId, customerName, reason, issueDate, lines]
+      properties:
+        warehouseId: { type: string }
+        customerId: { type: [string, 'null'] }
+        customerName: { type: string, minLength: 1, maxLength: 200 }
+        reason: { $ref: '#/components/schemas/IssueReason' }
+        referenceNo: { type: string, maxLength: 50 }
+        issueDate: { type: string, format: date }
+        note: { type: string, maxLength: 1000 }
+        lines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/GoodsIssueLineRequest' }
+
+    # ── Stock movements ──
+    MovementType:
+      type: string
+      enum:
+        [
+          RECEIPT,
+          RECEIPT_CANCEL,
+          ISSUE,
+          ISSUE_CANCEL,
+          TRANSFER_OUT,
+          TRANSFER_IN,
+          TRANSFER_CANCEL,
+          ADJUSTMENT,
+        ]
+
+    StockMovement:
+      type: object
+      required:
+        - id
+        - occurredAt
+        - type
+        - productId
+        - sku
+        - productName
+        - unit
+        - warehouseId
+        - warehouseName
+        - quantity
+        - balanceAfter
+        - unitCost
+        - documentType
+        - documentId
+        - documentCode
+        - createdBy
+      properties:
+        id: { type: string }
+        occurredAt: { type: string, format: date-time }
+        type: { $ref: '#/components/schemas/MovementType' }
+        productId: { type: string }
+        sku: { type: string }
+        productName: { type: string }
+        unit: { type: string }
+        warehouseId: { type: string }
+        warehouseName: { type: string }
+        locationId: { type: [string, 'null'], description: Ô phát sinh biến động }
+        locationCode: { type: [string, 'null'] }
+        quantity: { type: integer, description: 'Số lượng có dấu: + nhập, − xuất' }
+        balanceAfter: { type: integer, minimum: 0, description: Tồn sau biến động tại kho }
+        unitCost: { type: integer }
+        documentType: { $ref: '#/components/schemas/DocumentType' }
+        documentId: { type: string }
+        documentCode: { type: string }
+        createdBy: { $ref: '#/components/schemas/UserRef' }
+        note: { type: string }
+
+    StockMovementPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/StockMovement' }
+
+    # ── Dashboard ──
+    DashboardSummary:
+      type: object
+      required:
+        - totalProducts
+        - activeProducts
+        - totalQuantity
+        - totalStockValue
+        - lowStockCount
+        - outOfStockCount
+        - pendingReceipts
+        - pendingIssues
+        - receiptsThisMonth
+        - issuesThisMonth
+      properties:
+        totalProducts: { type: integer }
+        activeProducts: { type: integer }
+        totalQuantity: { type: integer }
+        totalStockValue: { type: integer }
+        lowStockCount: { type: integer, description: Số dòng tồn LOW_STOCK }
+        outOfStockCount: { type: integer, description: Số dòng tồn OUT_OF_STOCK }
+        pendingReceipts: { type: integer, description: Phiếu nhập chờ duyệt }
+        pendingIssues: { type: integer, description: Phiếu xuất chờ duyệt }
+        receiptsThisMonth: { type: integer, description: Phiếu nhập đã duyệt trong tháng }
+        issuesThisMonth: { type: integer, description: Phiếu xuất đã duyệt trong tháng }
+
+    MovementTrendPoint:
+      type: object
+      required: [date, inboundQuantity, outboundQuantity, inboundValue, outboundValue]
+      properties:
+        date: { type: string, format: date }
+        inboundQuantity: { type: integer }
+        outboundQuantity: { type: integer }
+        inboundValue: { type: integer }
+        outboundValue: { type: integer }
+
+    # ── Roles ──
+    RoleDefinition:
+      type: object
+      required: [role, permissions, editable, userCount, updatedAt]
+      properties:
+        role: { $ref: '#/components/schemas/Role' }
+        permissions:
+          type: array
+          items: { $ref: '#/components/schemas/Permission' }
+        editable: { type: boolean, description: 'false với ADMIN (luôn đủ quyền)' }
+        userCount: { type: integer, description: Số người dùng đang giữ vai trò }
+        updatedAt: { type: string, format: date-time }
+        updatedBy: { $ref: '#/components/schemas/UserRef' }
+
+    RolePermissionsRequest:
+      type: object
+      required: [permissions]
+      properties:
+        permissions:
+          type: array
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/Permission' }
+
+    # ── Locations ──
+    LocationType:
+      type: string
+      enum: [ZONE, RACK, LEVEL, BIN]
+      description: 'Cấp vị trí: ZONE (khu) › RACK (kệ) › LEVEL (tầng) › BIN (ô — nơi chứa hàng)'
+
+    LocationStatus:
+      type: string
+      enum: [ACTIVE, INACTIVE]
+
+    Location:
+      type: object
+      required:
+        [id, warehouseId, type, code, name, path, status, sortOrder, quantity, skuCount, childCount]
+      properties:
+        id: { type: string }
+        warehouseId: { type: string }
+        parentId: { type: [string, 'null'] }
+        type: { $ref: '#/components/schemas/LocationType' }
+        code: { type: string, description: 'Mã đầy đủ, duy nhất trong kho, vd A-01-2-03' }
+        name: { type: string }
+        path:
+          { type: string, description: 'Đường dẫn hiển thị, vd "Khu A › Kệ A-01 › Tầng 2 › Ô 03"' }
+        capacity: { type: [integer, 'null'], description: Sức chứa (đơn vị hàng) — chỉ với BIN }
+        status: { $ref: '#/components/schemas/LocationStatus' }
+        sortOrder: { type: integer }
+        quantity: { type: integer, description: Tổng tồn trong vị trí (gộp cả vị trí con) }
+        skuCount: { type: integer, description: Số SKU đang có tồn trong vị trí }
+        childCount: { type: integer }
+
+    LocationRequest:
+      type: object
+      required: [type, code, name]
+      properties:
+        parentId: { type: [string, 'null'], description: Bắt buộc với RACK/LEVEL/BIN }
+        type: { $ref: '#/components/schemas/LocationType' }
+        code: { type: string, pattern: '^[A-Z0-9-]{1,20}$' }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        capacity: { type: integer, minimum: 1 }
+        sortOrder: { type: integer }
+
+    LocationUpdateRequest:
+      type: object
+      required: [name, status]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        capacity: { type: integer, minimum: 1 }
+        status: { $ref: '#/components/schemas/LocationStatus' }
+        sortOrder: { type: integer }
+
+    GenerateRackRequest:
+      type: object
+      required: [zoneId, rackCode, levels, binsPerLevel, binCapacity]
+      properties:
+        zoneId: { type: string }
+        rackCode: { type: string, pattern: '^[A-Z0-9-]{1,12}$', description: 'Mã kệ, vd A-05' }
+        rackName: { type: string, maxLength: 100 }
+        levels: { type: integer, minimum: 1, maximum: 10 }
+        binsPerLevel: { type: integer, minimum: 1, maximum: 20 }
+        binCapacity: { type: integer, minimum: 1, maximum: 100000 }
+
+    MapBin:
+      type: object
+      required: [id, code, status, capacity, quantity, skuCount, fillRate, lowStockSkuCount]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        status: { $ref: '#/components/schemas/LocationStatus' }
+        capacity: { type: integer }
+        quantity: { type: integer }
+        skuCount: { type: integer }
+        fillRate: { type: number, description: 'quantity / capacity (có thể > 1 khi quá tải)' }
+        lowStockSkuCount:
+          { type: integer, description: Số SKU trong ô đang dưới tồn tối thiểu của kho }
+
+    MapLevel:
+      type: object
+      required: [id, code, name, bins]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        name: { type: string }
+        bins:
+          type: array
+          items: { $ref: '#/components/schemas/MapBin' }
+
+    MapRack:
+      type: object
+      required: [id, code, name, levels, quantity, capacity]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        name: { type: string }
+        quantity: { type: integer }
+        capacity: { type: integer }
+        levels:
+          type: array
+          description: Tầng cao nhất đứng đầu (đúng chiều nhìn mặt kệ)
+          items: { $ref: '#/components/schemas/MapLevel' }
+
+    MapZone:
+      type: object
+      required: [id, code, name, racks, quantity, capacity]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        name: { type: string }
+        quantity: { type: integer }
+        capacity: { type: integer }
+        racks:
+          type: array
+          items: { $ref: '#/components/schemas/MapRack' }
+
+    WarehouseMap:
+      type: object
+      required: [warehouseId, warehouseName, zones, binCount, usedBinCount, capacity, quantity]
+      properties:
+        warehouseId: { type: string }
+        warehouseName: { type: string }
+        binCount: { type: integer }
+        usedBinCount: { type: integer, description: Số ô đang có hàng }
+        capacity: { type: integer }
+        quantity: { type: integer }
+        zones:
+          type: array
+          items: { $ref: '#/components/schemas/MapZone' }
+
+    BinStockItem:
+      type: object
+      required:
+        - id
+        - warehouseId
+        - locationId
+        - locationCode
+        - locationPath
+        - productId
+        - sku
+        - productName
+        - unit
+        - quantity
+      properties:
+        id: { type: string }
+        warehouseId: { type: string }
+        locationId: { type: string }
+        locationCode: { type: string }
+        locationPath: { type: string }
+        productId: { type: string }
+        sku: { type: string }
+        productName: { type: string }
+        barcode: { type: string }
+        unit: { type: string }
+        quantity: { type: integer, minimum: 0 }
+        updatedAt: { type: string, format: date-time }
+
+    BinStockPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/BinStockItem' }
+
+    # ── Transfers ──
+    TransferStatus:
+      type: string
+      enum: [DRAFT, IN_TRANSIT, RECEIVED, CANCELLED]
+      description: |
+        DRAFT → IN_TRANSIT (xuất đi: trừ tồn kho đi) → RECEIVED (nhận: cộng tồn kho đến).
+        DRAFT có thể xóa; IN_TRANSIT có thể hủy (hàng hoàn về kho đi).
+
+    TransferPick:
+      type: object
+      required: [locationId, locationCode, quantity]
+      properties:
+        locationId: { type: string }
+        locationCode: { type: string }
+        quantity: { type: integer }
+
+    TransferLine:
+      type: object
+      required: [id, productId, sku, productName, unit, quantity, picks]
+      properties:
+        id: { type: string }
+        productId: { type: string }
+        sku: { type: string }
+        productName: { type: string }
+        unit: { type: string }
+        quantity: { type: integer, minimum: 1, description: Số lượng chuyển }
+        fromLocationId:
+          { type: [string, 'null'], description: Ô lấy hàng chỉ định (null = tự phân bổ) }
+        picks:
+          type: array
+          description: Các ô đã lấy hàng khi xuất đi
+          items: { $ref: '#/components/schemas/TransferPick' }
+        receivedQuantity: { type: [integer, 'null'] }
+        toLocationId: { type: [string, 'null'] }
+        toLocationCode: { type: [string, 'null'] }
+
+    TransferLineRequest:
+      type: object
+      required: [productId, quantity]
+      properties:
+        productId: { type: string }
+        quantity: { type: integer, minimum: 1 }
+        fromLocationId: { type: [string, 'null'] }
+
+    TransferSummary:
+      type: object
+      required:
+        - id
+        - code
+        - fromWarehouseId
+        - fromWarehouseName
+        - toWarehouseId
+        - toWarehouseName
+        - status
+        - transferDate
+        - lineCount
+        - totalQuantity
+        - createdBy
+        - createdAt
+      properties:
+        id: { type: string }
+        code: { type: string, description: 'Mã phiếu, vd CK-202610-0001' }
+        fromWarehouseId: { type: string }
+        fromWarehouseName: { type: string }
+        toWarehouseId: { type: string }
+        toWarehouseName: { type: string }
+        status: { $ref: '#/components/schemas/TransferStatus' }
+        transferDate: { type: string, format: date }
+        expectedDate: { type: [string, 'null'], format: date }
+        lineCount: { type: integer }
+        totalQuantity: { type: integer }
+        receivedQuantity: { type: [integer, 'null'] }
+        createdBy: { $ref: '#/components/schemas/UserRef' }
+        createdAt: { type: string, format: date-time }
+
+    Transfer:
+      allOf:
+        - $ref: '#/components/schemas/TransferSummary'
+        - type: object
+          required: [lines, updatedAt]
+          properties:
+            note: { type: string }
+            lines:
+              type: array
+              items: { $ref: '#/components/schemas/TransferLine' }
+            updatedAt: { type: string, format: date-time }
+            shippedBy: { $ref: '#/components/schemas/UserRef' }
+            shippedAt: { type: string, format: date-time }
+            receivedBy: { $ref: '#/components/schemas/UserRef' }
+            receivedAt: { type: string, format: date-time }
+            receiveNote: { type: string }
+            cancelledBy: { $ref: '#/components/schemas/UserRef' }
+            cancelledAt: { type: string, format: date-time }
+            cancelReason: { type: string }
+
+    TransferPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/TransferSummary' }
+
+    TransferRequest:
+      type: object
+      required: [fromWarehouseId, toWarehouseId, transferDate, lines]
+      properties:
+        fromWarehouseId: { type: string }
+        toWarehouseId: { type: string }
+        transferDate: { type: string, format: date }
+        expectedDate: { type: [string, 'null'], format: date }
+        note: { type: string, maxLength: 1000 }
+        lines:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/TransferLineRequest' }
+
+    TransferReceiveRequest:
+      type: object
+      required: [lines]
+      properties:
+        note: { type: string, maxLength: 1000 }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [lineId, receivedQuantity]
+            properties:
+              lineId: { type: string }
+              receivedQuantity: { type: integer, minimum: 0 }
+              toLocationId: { type: [string, 'null'], description: Ô cất hàng (null = tự chọn) }
+
+    # ── Stocktakes ──
+    StocktakeStatus:
+      type: string
+      enum: [IN_PROGRESS, SUBMITTED, COMPLETED, CANCELLED]
+      description: 'IN_PROGRESS (đang đếm) → SUBMITTED (chờ duyệt) → COMPLETED (đã điều chỉnh tồn)'
+
+    StocktakeSummary:
+      type: object
+      required:
+        - id
+        - code
+        - warehouseId
+        - warehouseName
+        - name
+        - status
+        - blind
+        - scopeLabel
+        - lineCount
+        - countedLineCount
+        - varianceLineCount
+        - varianceQuantity
+        - varianceValue
+        - createdBy
+        - createdAt
+      properties:
+        id: { type: string }
+        code: { type: string, description: 'Mã phiên, vd KK-202610-0001' }
+        warehouseId: { type: string }
+        warehouseName: { type: string }
+        name: { type: string }
+        status: { $ref: '#/components/schemas/StocktakeStatus' }
+        blind: { type: boolean, description: Đếm mù — người đếm không thấy số tồn hệ thống }
+        zoneIds:
+          type: array
+          items: { type: string }
+        scopeLabel:
+          { type: string, description: 'Phạm vi hiển thị, vd "Toàn kho" hoặc "Khu A, Khu B"' }
+        lineCount: { type: integer }
+        countedLineCount: { type: integer }
+        varianceLineCount: { type: integer, description: Số dòng đã đếm có chênh lệch }
+        varianceQuantity: { type: integer, description: Tổng chênh lệch (có dấu) }
+        varianceValue: { type: integer, description: Giá trị chênh lệch theo giá vốn (VND, có dấu) }
+        createdBy: { $ref: '#/components/schemas/UserRef' }
+        createdAt: { type: string, format: date-time }
+
+    Stocktake:
+      allOf:
+        - $ref: '#/components/schemas/StocktakeSummary'
+        - type: object
+          required: [updatedAt]
+          properties:
+            note: { type: string }
+            updatedAt: { type: string, format: date-time }
+            submittedBy: { $ref: '#/components/schemas/UserRef' }
+            submittedAt: { type: string, format: date-time }
+            approvedBy: { $ref: '#/components/schemas/UserRef' }
+            approvedAt: { type: string, format: date-time }
+            cancelledBy: { $ref: '#/components/schemas/UserRef' }
+            cancelledAt: { type: string, format: date-time }
+            cancelReason: { type: string }
+
+    StocktakePage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/StocktakeSummary' }
+
+    StocktakeLine:
+      type: object
+      required:
+        - id
+        - locationId
+        - locationCode
+        - locationPath
+        - productId
+        - sku
+        - productName
+        - unit
+        - expectedQuantity
+        - countedQuantity
+        - variance
+        - stockChanged
+        - unexpected
+      properties:
+        id: { type: string }
+        locationId: { type: string }
+        locationCode: { type: string }
+        locationPath: { type: string }
+        productId: { type: string }
+        sku: { type: string }
+        productName: { type: string }
+        barcode: { type: string }
+        unit: { type: string }
+        expectedQuantity:
+          { type: [integer, 'null'], description: Tồn hệ thống lúc mở phiên (null khi đếm mù) }
+        countedQuantity: { type: [integer, 'null'] }
+        variance: { type: [integer, 'null'], description: countedQuantity − expectedQuantity }
+        countedBy: { $ref: '#/components/schemas/UserRef' }
+        countedAt: { type: string, format: date-time }
+        note: { type: string }
+        stockChanged:
+          { type: boolean, description: Tồn hệ thống của ô đã biến động sau khi mở phiên }
+        unexpected: { type: boolean, description: Hàng phát hiện ngoài danh sách chốt }
+
+    StocktakeRequest:
+      type: object
+      required: [warehouseId, name, blind]
+      properties:
+        warehouseId: { type: string }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        zoneIds:
+          type: array
+          description: Các khu cần kiểm (rỗng = toàn kho)
+          items: { type: string }
+        blind: { type: boolean }
+        note: { type: string, maxLength: 1000 }
+
+    StocktakeCountEntry:
+      type: object
+      required: [clientId, countedQuantity, countedAt]
+      properties:
+        clientId: { type: string, description: Khóa idempotency do thiết bị sinh (UUID) }
+        lineId: { type: string, description: Dòng có sẵn trong phiên }
+        locationId:
+          { type: string, description: Dùng cùng productId khi phát hiện hàng ngoài danh sách }
+        productId: { type: string }
+        countedQuantity: { type: integer, minimum: 0 }
+        countedAt: { type: string, format: date-time, description: Thời điểm đếm trên thiết bị }
+        note: { type: string, maxLength: 500 }
+
+    StocktakeCountBatch:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items: { $ref: '#/components/schemas/StocktakeCountEntry' }
+
+    StocktakeCountResult:
+      type: object
+      required: [applied, skipped]
+      properties:
+        applied:
+          type: array
+          items:
+            type: object
+            required: [clientId, line]
+            properties:
+              clientId: { type: string }
+              line: { $ref: '#/components/schemas/StocktakeLine' }
+        skipped:
+          type: array
+          items:
+            type: object
+            required: [clientId, reason, message]
+            properties:
+              clientId: { type: string }
+              reason:
+                type: string
+                enum: [STALE, INVALID]
+              message: { type: string }
+              line: { $ref: '#/components/schemas/StocktakeLine' }
+
+    # ── Partners ──
+    PartnerStatus:
+      type: string
+      enum: [ACTIVE, INACTIVE]
+
+    Supplier:
+      type: object
+      required: [id, code, name, paymentTermDays, status, receiptCount, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        name: { type: string }
+        taxCode: { type: string }
+        contactName: { type: string }
+        phone: { type: string }
+        email: { type: string, format: email }
+        address: { type: string }
+        paymentTermDays: { type: integer, description: Số ngày công nợ }
+        status: { $ref: '#/components/schemas/PartnerStatus' }
+        note: { type: string }
+        receiptCount: { type: integer, description: Số phiếu nhập đã phát sinh }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    SupplierRequest:
+      type: object
+      required: [code, name, paymentTermDays, status]
+      properties:
+        code: { type: string, pattern: '^[A-Z0-9-]{2,20}$' }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        taxCode: { type: string, pattern: '^[0-9]{10}(-[0-9]{3})?$' }
+        contactName: { type: string, maxLength: 100 }
+        phone: { type: string, pattern: '^[0-9+ ]{8,15}$' }
+        email: { type: string, format: email }
+        address: { type: string, maxLength: 300 }
+        paymentTermDays: { type: integer, minimum: 0, maximum: 365 }
+        status: { $ref: '#/components/schemas/PartnerStatus' }
+        note: { type: string, maxLength: 1000 }
+
+    SupplierPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Supplier' }
+
+    CustomerType:
+      type: string
+      enum: [RETAIL, WHOLESALE, ONLINE]
+      description: 'RETAIL: khách lẻ / cửa hàng; WHOLESALE: đại lý, bán buôn; ONLINE: sàn TMĐT'
+
+    Customer:
+      type: object
+      required: [id, code, name, type, status, issueCount, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        code: { type: string }
+        name: { type: string }
+        type: { $ref: '#/components/schemas/CustomerType' }
+        taxCode: { type: string }
+        contactName: { type: string }
+        phone: { type: string }
+        email: { type: string, format: email }
+        address: { type: string }
+        status: { $ref: '#/components/schemas/PartnerStatus' }
+        note: { type: string }
+        issueCount: { type: integer, description: Số phiếu xuất đã phát sinh }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CustomerRequest:
+      type: object
+      required: [code, name, type, status]
+      properties:
+        code: { type: string, pattern: '^[A-Z0-9-]{2,20}$' }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        type: { $ref: '#/components/schemas/CustomerType' }
+        taxCode: { type: string, pattern: '^[0-9]{10}(-[0-9]{3})?$' }
+        contactName: { type: string, maxLength: 100 }
+        phone: { type: string, pattern: '^[0-9+ ]{8,15}$' }
+        email: { type: string, format: email }
+        address: { type: string, maxLength: 300 }
+        status: { $ref: '#/components/schemas/PartnerStatus' }
+        note: { type: string, maxLength: 1000 }
+
+    CustomerPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Customer' }
+
+    # ── Audit log ──
+    AuditAction:
+      type: string
+      enum:
+        - CREATE
+        - UPDATE
+        - DELETE
+        - SUBMIT
+        - APPROVE
+        - REJECT
+        - CANCEL
+        - SHIP
+        - RECEIVE
+        - COUNT
+        - REOPEN
+        - LOGIN
+        - LOGIN_FAILED
+        - LOGOUT
+        - PERMISSION_CHANGE
+        - PASSWORD_RESET
+        - DATA_RESET
+
+    AuditEntityType:
+      type: string
+      enum:
+        - AUTH
+        - USER
+        - ROLE
+        - WAREHOUSE
+        - LOCATION
+        - PRODUCT
+        - CATEGORY
+        - SUPPLIER
+        - CUSTOMER
+        - GOODS_RECEIPT
+        - GOODS_ISSUE
+        - TRANSFER
+        - STOCKTAKE
+        - SYSTEM
+
+    AuditChange:
+      type: object
+      required: [field, from, to]
+      properties:
+        field: { type: string }
+        from: { type: [string, 'null'] }
+        to: { type: [string, 'null'] }
+
+    AuditLog:
+      type: object
+      required: [id, occurredAt, userName, action, entityType, summary, changes]
+      properties:
+        id: { type: string }
+        occurredAt: { type: string, format: date-time }
+        userId: { type: [string, 'null'] }
+        userName: { type: string }
+        action: { $ref: '#/components/schemas/AuditAction' }
+        entityType: { $ref: '#/components/schemas/AuditEntityType' }
+        entityId: { type: [string, 'null'] }
+        entityLabel:
+          { type: [string, 'null'], description: 'Mã/tên dễ đọc của đối tượng, vd CK-202610-0003' }
+        summary: { type: string }
+        changes:
+          type: array
+          items: { $ref: '#/components/schemas/AuditChange' }
+        ipAddress: { type: string }
+        userAgent: { type: string }
+
+    AuditLogPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/AuditLog' }

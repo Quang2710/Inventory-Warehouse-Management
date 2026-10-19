@@ -1,0 +1,100 @@
+<app-page-header [heading]="'audit.title' | t" [subtitle]="'audit.subtitle' | t" />
+
+<app-data-table
+  tableId="audit-logs"
+  [columns]="columns"
+  [rows]="list.items()"
+  [total]="list.total()"
+  [pageIndex]="list.pageIndex()"
+  [pageSize]="list.params().size"
+  [sort]="list.params().sort"
+  [loading]="list.loading()"
+  [loaded]="list.loaded()"
+  [error]="list.error()"
+  [filtered]="list.hasFilters()"
+  [clickable]="true"
+  [ariaLabel]="'audit.title' | t"
+  emptyIcon="history"
+  (page)="list.setPage($event.pageIndex, $event.pageSize)"
+  (sortChange)="list.setSort($event)"
+  (rowClick)="open($event)"
+  (retry)="list.reload()"
+>
+  <ng-container filters>
+    <app-search-field
+      [value]="list.params().q"
+      [placeholder]="'audit.searchPlaceholder' | t"
+      (queryChange)="list.setQuery($event)"
+    />
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>{{ 'audit.fields.action' | t }}</mat-label>
+      <mat-select
+        [value]="list.params().filters.action"
+        (valueChange)="list.setFilter('action', $event)"
+      >
+        <mat-option [value]="null">{{ 'common.all' | t }}</mat-option>
+        @for (action of actionOptions; track action) {
+          <mat-option [value]="action">{{ actionLabels[action] | t }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>{{ 'audit.fields.entityType' | t }}</mat-label>
+      <mat-select
+        [value]="list.params().filters.entityType"
+        (valueChange)="list.setFilter('entityType', $event)"
+      >
+        <mat-option [value]="null">{{ 'common.all' | t }}</mat-option>
+        @for (entity of entityOptions; track entity) {
+          <mat-option [value]="entity">{{ entityLabels[entity] | t }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic" class="date">
+      <mat-label>{{ 'common.fromDate' | t }}</mat-label>
+      <input
+        matInput
+        [matDatepicker]="fromPicker"
+        [value]="fromDate()"
+        (dateChange)="setDate('from', $event.value)"
+      />
+      <mat-datepicker-toggle matIconSuffix [for]="fromPicker" />
+      <mat-datepicker #fromPicker />
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic" class="date">
+      <mat-label>{{ 'common.toDate' | t }}</mat-label>
+      <input
+        matInput
+        [matDatepicker]="toPicker"
+        [value]="toDate()"
+        (dateChange)="setDate('to', $event.value)"
+      />
+      <mat-datepicker-toggle matIconSuffix [for]="toPicker" />
+      <mat-datepicker #toPicker />
+    </mat-form-field>
+  </ng-container>
+
+  <ng-template appCell="occurredAt" let-row>{{
+    row.occurredAt | date: 'dd/MM/yyyy HH:mm'
+  }}</ng-template>
+  <ng-template appCell="action" let-row>
+    <span class="action" [class]="'action--' + row.action">{{
+      actionLabels[$any(row.action)] | t
+    }}</span>
+  </ng-template>
+  <ng-template appCell="entityType" let-row>{{
+    entityLabels[$any(row.entityType)] | t
+  }}</ng-template>
+  <ng-template appCell="entityLabel" let-row>
+    @if (entityLink(row); as link) {
+      <a class="mono" [routerLink]="link" (click)="$event.stopPropagation()">{{
+        row.entityLabel
+      }}</a>
+    } @else {
+      <span class="mono">{{ row.entityLabel ?? '—' }}</span>
+    }
+  </ng-template>
+  <ng-template appCell="summary" let-row>
+    <span class="summary" [title]="row.summary">{{ row.summary }}</span>
+  </ng-template>
+</app-data-table>

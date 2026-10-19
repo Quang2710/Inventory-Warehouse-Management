@@ -1,0 +1,118 @@
+<div class="toolbar">
+  <div class="toolbar__filters"><ng-content select="[filters]" /></div>
+  <button
+    mat-icon-button
+    type="button"
+    [matMenuTriggerFor]="columnMenu"
+    [attr.aria-label]="'common.columns' | t"
+    [matTooltip]="'common.columns' | t"
+  >
+    <mat-icon>view_column</mat-icon>
+  </button>
+  <mat-menu #columnMenu="matMenu" class="column-menu">
+    @for (column of columns(); track column.key) {
+      @if (!column.required) {
+        <div
+          class="column-menu__item"
+          mat-menu-item
+          tabindex="0"
+          (click)="$event.stopPropagation()"
+          (keydown.enter)="$event.stopPropagation()"
+        >
+          <mat-checkbox [checked]="!hidden().has(column.key)" (change)="toggleColumn(column)">
+            {{ column.labelKey | t }}
+          </mat-checkbox>
+        </div>
+      }
+    }
+  </mat-menu>
+</div>
+
+@if (errorMessage(); as message) {
+  <app-state-panel
+    icon="cloud_off"
+    tone="error"
+    [heading]="'common.loadError' | t"
+    [message]="message"
+  >
+    <button mat-stroked-button type="button" (click)="retry.emit()">
+      {{ 'common.retry' | t }}
+    </button>
+  </app-state-panel>
+} @else if (showSkeleton()) {
+  <div class="skeleton" aria-hidden="true">
+    @for (row of skeletonRows; track row) {
+      <div class="skeleton__row">
+        @for (column of visibleColumns(); track column.key) {
+          <span class="skeleton__cell"></span>
+        }
+      </div>
+    }
+  </div>
+  <span class="visually-hidden" role="status">{{ 'common.loading' | t }}</span>
+} @else {
+  <div class="table-wrap" [class.table-wrap--busy]="loading()">
+    @if (loading()) {
+      <mat-progress-bar class="table-progress" mode="indeterminate" />
+    }
+    <table
+      mat-table
+      [dataSource]="rows()"
+      matSort
+      [matSortActive]="sort()?.active ?? ''"
+      [matSortDirection]="sort()?.direction ?? ''"
+      (matSortChange)="onSort($event)"
+      [attr.aria-label]="ariaLabel()"
+      [attr.aria-busy]="loading()"
+    >
+      @for (column of visibleColumns(); track column.key) {
+        <ng-container [matColumnDef]="column.key">
+          <th
+            mat-header-cell
+            *matHeaderCellDef
+            [mat-sort-header]="column.sortKey ?? column.key"
+            [disabled]="!column.sortable"
+            [class]="'align-' + (column.align ?? 'start')"
+          >
+            {{ column.labelKey | t }}
+          </th>
+          <td mat-cell *matCellDef="let row" [class]="'align-' + (column.align ?? 'start')">
+            @if (templates().get(column.key); as template) {
+              <ng-container *ngTemplateOutlet="template; context: { $implicit: row }" />
+            } @else {
+              {{ cellValue(row, column.key) }}
+            }
+          </td>
+        </ng-container>
+      }
+      <tr mat-header-row *matHeaderRowDef="displayedColumns(); sticky: true"></tr>
+      <tr
+        mat-row
+        *matRowDef="let row; columns: displayedColumns()"
+        [class.row--clickable]="clickable()"
+        [attr.tabindex]="clickable() ? 0 : null"
+        (click)="onRow(row)"
+        (keydown.enter)="onRow(row)"
+      ></tr>
+    </table>
+    @if (loaded() && rows().length === 0 && !loading()) {
+      <app-state-panel
+        [icon]="filtered() ? 'filter_alt_off' : emptyIcon()"
+        [heading]="(filtered() ? 'common.noResults' : 'common.noData') | t"
+      >
+        <ng-content select="[empty-actions]" />
+      </app-state-panel>
+    }
+  </div>
+}
+
+@if (paginated() && !errorMessage()) {
+  <mat-paginator
+    [length]="total()"
+    [pageIndex]="pageIndex()"
+    [pageSize]="pageSize()"
+    [pageSizeOptions]="[10, 20, 50, 100]"
+    [showFirstLastButtons]="true"
+    (page)="page.emit($event)"
+  />
+}

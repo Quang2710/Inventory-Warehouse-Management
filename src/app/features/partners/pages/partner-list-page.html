@@ -1,0 +1,102 @@
+<app-page-header [heading]="config.title | t" [subtitle]="config.subtitle | t">
+  <button *hasPermission="config.write" actions mat-flat-button type="button" (click)="open()">
+    <mat-icon>add</mat-icon>
+    {{ config.create | t }}
+  </button>
+</app-page-header>
+
+<app-data-table
+  [tableId]="config.path"
+  [columns]="columns"
+  [rows]="list.items()"
+  [total]="list.total()"
+  [pageIndex]="list.pageIndex()"
+  [pageSize]="list.params().size"
+  [sort]="list.params().sort"
+  [loading]="list.loading()"
+  [loaded]="list.loaded()"
+  [error]="list.error()"
+  [filtered]="list.hasFilters()"
+  [clickable]="canWrite()"
+  [ariaLabel]="config.title | t"
+  emptyIcon="contacts"
+  (page)="list.setPage($event.pageIndex, $event.pageSize)"
+  (sortChange)="list.setSort($event)"
+  (rowClick)="open($event)"
+  (retry)="list.reload()"
+>
+  <ng-container filters>
+    <app-search-field
+      [value]="list.params().q"
+      [placeholder]="'partners.searchPlaceholder' | t"
+      (queryChange)="list.setQuery($event)"
+    />
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>{{ 'partners.fields.status' | t }}</mat-label>
+      <mat-select
+        [value]="list.params().filters.status"
+        (valueChange)="list.setFilter('status', $event)"
+      >
+        <mat-option [value]="null">{{ 'common.all' | t }}</mat-option>
+        @for (status of statusOptions; track status) {
+          <mat-option [value]="status">{{ statusLabels[status].labelKey | t }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    @if (isCustomer) {
+      <mat-form-field subscriptSizing="dynamic">
+        <mat-label>{{ 'partners.fields.type' | t }}</mat-label>
+        <mat-select
+          [value]="list.params().filters.type"
+          (valueChange)="list.setFilter('type', $event)"
+        >
+          <mat-option [value]="null">{{ 'common.all' | t }}</mat-option>
+          @for (type of typeOptions; track type) {
+            <mat-option [value]="type">{{ typeLabels[type] | t }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    }
+  </ng-container>
+
+  <ng-template appCell="code" let-row>
+    <span class="mono">{{ row.code }}</span>
+  </ng-template>
+  <ng-template appCell="type" let-row>
+    @if (typeLabel(row); as label) {
+      {{ label | t }}
+    }
+  </ng-template>
+  <ng-template appCell="receiptCount" let-row>{{ countOf(row) | number }}</ng-template>
+  <ng-template appCell="issueCount" let-row>{{ countOf(row) | number }}</ng-template>
+  <ng-template appCell="status" let-row>
+    <app-status-chip [status]="statusLabels[row.status]" />
+  </ng-template>
+  <ng-template appCell="actions" let-row>
+    @if (canWrite()) {
+      <button
+        mat-icon-button
+        type="button"
+        [matMenuTriggerFor]="rowMenu"
+        [matMenuTriggerData]="{ row }"
+        [attr.aria-label]="'common.moreActions' | t"
+        (click)="$event.stopPropagation()"
+      >
+        <mat-icon>more_vert</mat-icon>
+      </button>
+    }
+  </ng-template>
+</app-data-table>
+
+<mat-menu #rowMenu="matMenu">
+  <ng-template matMenuContent let-row="row">
+    <button mat-menu-item type="button" (click)="open(row)">
+      <mat-icon>edit</mat-icon>
+      <span>{{ 'common.edit' | t }}</span>
+    </button>
+    <button mat-menu-item type="button" (click)="remove(row)">
+      <mat-icon>delete</mat-icon>
+      <span>{{ 'common.delete' | t }}</span>
+    </button>
+  </ng-template>
+</mat-menu>

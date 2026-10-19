@@ -1,0 +1,130 @@
+<app-page-header [heading]="heading()" [subtitle]="'transfers.subtitle' | t" />
+
+<form [formGroup]="form" (ngSubmit)="save()" novalidate class="form">
+  <section class="card header-grid">
+    <mat-form-field>
+      <mat-label>{{ 'transfers.fields.from' | t }}</mat-label>
+      <mat-select formControlName="fromWarehouseId">
+        @for (warehouse of warehouses.active(); track warehouse.id) {
+          <mat-option [value]="warehouse.id"
+            >{{ warehouse.code }} — {{ warehouse.name }}</mat-option
+          >
+        }
+      </mat-select>
+      <mat-error>{{ form.controls.fromWarehouseId | fieldError }}</mat-error>
+    </mat-form-field>
+    <mat-form-field>
+      <mat-label>{{ 'transfers.fields.to' | t }}</mat-label>
+      <mat-select formControlName="toWarehouseId">
+        @for (warehouse of destinations(); track warehouse.id) {
+          <mat-option [value]="warehouse.id"
+            >{{ warehouse.code }} — {{ warehouse.name }}</mat-option
+          >
+        }
+      </mat-select>
+      <mat-error>
+        @if (form.controls.toWarehouseId.hasError('sameWarehouse')) {
+          {{ 'transfers.sameWarehouse' | t }}
+        } @else {
+          {{ form.controls.toWarehouseId | fieldError }}
+        }
+      </mat-error>
+    </mat-form-field>
+    <mat-form-field>
+      <mat-label>{{ 'transfers.fields.transferDate' | t }}</mat-label>
+      <input matInput [matDatepicker]="transferPicker" formControlName="transferDate" />
+      <mat-datepicker-toggle matIconSuffix [for]="transferPicker" />
+      <mat-datepicker #transferPicker />
+      <mat-error>{{ form.controls.transferDate | fieldError }}</mat-error>
+    </mat-form-field>
+    <mat-form-field>
+      <mat-label>{{ 'transfers.fields.expectedDate' | t }}</mat-label>
+      <input matInput [matDatepicker]="expectedPicker" formControlName="expectedDate" />
+      <mat-datepicker-toggle matIconSuffix [for]="expectedPicker" />
+      <mat-datepicker #expectedPicker />
+    </mat-form-field>
+    <mat-form-field class="full">
+      <mat-label>{{ 'transfers.fields.note' | t }}</mat-label>
+      <textarea matInput formControlName="note" rows="2"></textarea>
+      <mat-error>{{ form.controls.note | fieldError }}</mat-error>
+    </mat-form-field>
+  </section>
+
+  <section class="card">
+    <header class="lines-header">
+      <h2>{{ 'transfers.lines.title' | t }}</h2>
+      <button
+        mat-stroked-button
+        type="button"
+        (click)="addLine()"
+        [matTooltip]="'transfers.lines.addShortcut' | t"
+      >
+        <mat-icon>add</mat-icon>{{ 'transfers.lines.add' | t }}
+      </button>
+    </header>
+
+    @if (lines.length === 0) {
+      <p class="empty" [class.error]="lines.touched">{{ 'transfers.lines.empty' | t }}</p>
+    }
+
+    <ol class="lines" formArrayName="lines">
+      @for (line of lines.controls; track line; let index = $index) {
+        <li class="line" [formGroupName]="index">
+          <span class="line__no" aria-hidden="true">{{ index + 1 }}</span>
+          <app-product-autocomplete
+            class="line__product"
+            [control]="line.controls.product"
+            [label]="'transfers.fields.product' | t"
+          />
+          <div class="line__available">
+            <span class="label">{{ 'transfers.fields.available' | t }}</span>
+            <span class="value">{{
+              availableFor(line) === null ? '—' : (availableFor(line) | number)
+            }}</span>
+          </div>
+          <mat-form-field class="line__qty">
+            <mat-label>{{ 'transfers.fields.quantity' | t }}</mat-label>
+            <input matInput type="number" inputmode="numeric" min="1" formControlName="quantity" />
+            @if (overStock(line)) {
+              <mat-hint class="warn">{{
+                'transfers.lines.overStock' | t: { available: availableFor(line) ?? 0 }
+              }}</mat-hint>
+            }
+            <mat-error>{{ line.controls.quantity | fieldError }}</mat-error>
+          </mat-form-field>
+          <mat-form-field class="line__bin">
+            <mat-label>{{ 'transfers.fields.fromLocation' | t }}</mat-label>
+            <mat-select formControlName="fromLocationId">
+              <mat-option [value]="null">{{ 'transfers.fields.autoPick' | t }}</mat-option>
+              @for (bin of binsFor(line); track bin.id) {
+                <mat-option [value]="bin.locationId"
+                  >{{ bin.locationCode }} ({{ bin.quantity | number }})</mat-option
+                >
+              }
+            </mat-select>
+          </mat-form-field>
+          <button
+            mat-icon-button
+            type="button"
+            class="line__remove"
+            (click)="removeLine(index)"
+            [attr.aria-label]="'transfers.lines.remove' | t"
+            [matTooltip]="'transfers.lines.remove' | t"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </li>
+      }
+    </ol>
+  </section>
+
+  <div class="actions">
+    <a mat-button [routerLink]="transfer() ? ['/transfers', transfer()!.id] : ['/transfers']">{{
+      'common.cancel' | t
+    }}</a>
+    <button mat-flat-button type="submit" [disabled]="saving()">
+      <mat-icon>save</mat-icon>
+      {{ (saving() ? 'common.saving' : 'common.save') | t }}
+    </button>
+  </div>
+</form>

@@ -1,0 +1,89 @@
+<h2 mat-dialog-title>{{ heading() }}</h2>
+<form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+  <mat-dialog-content>
+    <div class="grid">
+      <mat-form-field>
+        <mat-label>{{ 'partners.fields.code' | t }}</mat-label>
+        <input
+          matInput
+          formControlName="code"
+          (blur)="toUpper()"
+          autocomplete="off"
+          cdkFocusInitial
+        />
+        <mat-error>{{ form.controls.code | fieldError }}</mat-error>
+      </mat-form-field>
+      <mat-form-field>
+        <mat-label>{{ 'partners.fields.status' | t }}</mat-label>
+        <mat-select formControlName="status">
+          @for (status of statuses; track status[0]) {
+            <mat-option [value]="status[0]">{{ status[1].labelKey | t }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+      <mat-form-field class="full">
+        <mat-label>{{ 'partners.fields.name' | t }}</mat-label>
+        <input matInput formControlName="name" />
+        <mat-error>{{ form.controls.name | fieldError }}</mat-error>
+      </mat-form-field>
+
+      @if (isSupplier) {
+        <mat-form-field>
+          <mat-label>{{ 'partners.fields.paymentTermDays' | t }}</mat-label>
+          <input
+            matInput
+            type="number"
+            inputmode="numeric"
+            formControlName="paymentTermDays"
+            min="0"
+            max="365"
+          />
+          <mat-error>{{ form.controls.paymentTermDays | fieldError }}</mat-error>
+        </mat-form-field>
+      } @else {
+        <mat-form-field>
+          <mat-label>{{ 'partners.fields.type' | t }}</mat-label>
+          <mat-select formControlName="type">
+            @for (type of customerTypes; track type[0]) {
+              <mat-option [value]="type[0]">{{ type[1] | t }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+      }
+      <mat-form-field>
+        <mat-label>{{ 'partners.fields.taxCode' | t }}</mat-label>
+        <input matInput formControlName="taxCode" inputmode="numeric" />
+        <mat-error>{{ form.controls.taxCode | fieldError }}</mat-error>
+      </mat-form-field>
+
+      <mat-form-field>
+        <mat-label>{{ 'partners.fields.contactName' | t }}</mat-label>
+        <input matInput formControlName="contactName" />
+      </mat-form-field>
+      <mat-form-field>
+        <mat-label>{{ 'partners.fields.phone' | t }}</mat-label>
+        <input matInput formControlName="phone" type="tel" inputmode="tel" />
+        <mat-error>{{ form.controls.phone | fieldError }}</mat-error>
+      </mat-form-field>
+      <mat-form-field class="full">
+        <mat-label>{{ 'partners.fields.email' | t }}</mat-label>
+        <input matInput formControlName="email" type="email" />
+        <mat-error>{{ form.controls.email | fieldError }}</mat-error>
+      </mat-form-field>
+      <mat-form-field class="full">
+        <mat-label>{{ 'partners.fields.address' | t }}</mat-label>
+        <input matInput formControlName="address" />
+      </mat-form-field>
+      <mat-form-field class="full">
+        <mat-label>{{ 'partners.fields.note' | t }}</mat-label>
+        <textarea matInput formControlName="note" rows="2"></textarea>
+      </mat-form-field>
+    </div>
+  </mat-dialog-content>
+  <mat-dialog-actions align="end">
+    <button mat-button type="button" mat-dialog-close>{{ 'common.cancel' | t }}</button>
+    <button mat-flat-button type="submit" [disabled]="saving()">
+      {{ (saving() ? 'common.saving' : 'common.save') | t }}
+    </button>
+  </mat-dialog-actions>
+</form>

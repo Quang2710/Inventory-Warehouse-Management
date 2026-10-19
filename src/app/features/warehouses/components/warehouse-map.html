@@ -1,0 +1,66 @@
+<div class="legend" [attr.aria-label]="'map.legend.title' | t" role="list">
+  @for (item of legend; track item.level) {
+    <span class="legend__item" role="listitem">
+      <span class="swatch" [class]="'fill-' + item.level" aria-hidden="true"></span>
+      {{ item.labelKey | t }}
+    </span>
+  }
+  <span class="legend__item" role="listitem">
+    <span class="swatch fill-low" aria-hidden="true"><span class="dot"></span></span>
+    {{ 'map.legend.lowStock' | t }}
+  </span>
+</div>
+
+@for (zone of zones(); track zone.id) {
+  <section class="zone" [attr.aria-labelledby]="'zone-' + zone.id">
+    <header class="zone__header">
+      <h3 [id]="'zone-' + zone.id">{{ zone.name }}</h3>
+      <span class="zone__meta">
+        {{ zone.quantity | number }} / {{ zone.capacity | number }} ·
+        {{ rate(zone.quantity, zone.capacity) | percent: '1.0-0' }}
+      </span>
+      <span class="meter" aria-hidden="true">
+        <span class="meter__bar" [style.width.%]="rate(zone.quantity, zone.capacity) * 100"></span>
+      </span>
+    </header>
+
+    <div class="racks">
+      @for (rack of zone.racks; track rack.id) {
+        <article class="rack">
+          <header class="rack__header">
+            <span class="rack__name">{{ rack.name }}</span>
+            <span class="rack__meta">{{
+              rate(rack.quantity, rack.capacity) | percent: '1.0-0'
+            }}</span>
+          </header>
+          <div class="rack__levels">
+            @for (level of rack.levels; track level.id) {
+              <div class="level">
+                <span class="level__label" aria-hidden="true">{{ level.name }}</span>
+                <div class="level__bins">
+                  @for (bin of level.bins; track bin.id) {
+                    <button
+                      type="button"
+                      class="bin"
+                      [class]="'fill-' + fillLevel(bin)"
+                      [class.bin--selected]="bin.id === selectedBinId()"
+                      [attr.aria-label]="binLabel(bin)"
+                      [attr.aria-pressed]="bin.id === selectedBinId()"
+                      [matTooltip]="binLabel(bin)"
+                      (click)="binSelect.emit(bin)"
+                    >
+                      {{ shortCode(bin.code) }}
+                      @if (bin.lowStockSkuCount > 0) {
+                        <span class="dot" aria-hidden="true"></span>
+                      }
+                    </button>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        </article>
+      }
+    </div>
+  </section>
+}

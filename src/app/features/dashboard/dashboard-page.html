@@ -1,0 +1,63 @@
+@if (auth.user(); as user) {
+  <app-page-header
+    [heading]="'dashboard.greeting' | t: { name: user.fullName }"
+    [subtitle]="roleLabels[user.role] | t"
+  />
+
+  <div class="grid">
+    <mat-card appearance="outlined">
+      <mat-card-header>
+        <mat-icon mat-card-avatar aria-hidden="true">badge</mat-icon>
+        <mat-card-title>{{ 'dashboard.sessionTitle' | t }}</mat-card-title>
+      </mat-card-header>
+      <mat-card-content>
+        <dl class="facts">
+          <dt>{{ 'dashboard.usernameLabel' | t }}</dt>
+          <dd>{{ user.username }}</dd>
+          <dt>{{ 'dashboard.emailLabel' | t }}</dt>
+          <dd>{{ user.email }}</dd>
+          <dt>{{ 'dashboard.roleLabel' | t }}</dt>
+          <dd>{{ roleLabels[user.role] | t }}</dd>
+        </dl>
+      </mat-card-content>
+    </mat-card>
+
+    <mat-card appearance="outlined">
+      <mat-card-header>
+        <mat-icon mat-card-avatar aria-hidden="true">verified_user</mat-icon>
+        <mat-card-title>
+          {{ 'dashboard.permissionsTitle' | t: { count: permissions().length } }}
+        </mat-card-title>
+      </mat-card-header>
+      <mat-card-content>
+        <mat-chip-set
+          [attr.aria-label]="'dashboard.permissionsTitle' | t: { count: permissions().length }"
+        >
+          @for (permission of permissions(); track permission) {
+            <mat-chip>{{ permission }}</mat-chip>
+          }
+        </mat-chip-set>
+      </mat-card-content>
+    </mat-card>
+  </div>
+
+  <section class="modules" aria-labelledby="modules-title">
+    <h2 id="modules-title">{{ 'dashboard.modulesTitle' | t }}</h2>
+    <p class="hint">{{ 'dashboard.modulesHint' | t }}</p>
+    <ul>
+      @for (module of modules(); track module.path) {
+        <li>
+          <a [routerLink]="module.path">
+            <mat-icon aria-hidden="true">{{ module.icon }}</mat-icon>
+            <span>{{ module.labelKey | t }}</span>
+          </a>
+        </li>
+      }
+    </ul>
+  </section>
+
+  <p *hasRole="'ADMIN'" class="admin-note">
+    <mat-icon aria-hidden="true">admin_panel_settings</mat-icon>
+    {{ 'dashboard.adminOnly' | t }}
+  </p>
+}

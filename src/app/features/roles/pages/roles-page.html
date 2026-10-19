@@ -1,0 +1,102 @@
+<app-page-header [heading]="'rolesPage.title' | t" [subtitle]="'rolesPage.subtitle' | t">
+  @if (canEdit()) {
+    <div actions class="actions">
+      @if (changeCount() > 0) {
+        <span class="changes" role="status">{{
+          'rolesPage.changed' | t: { count: changeCount() }
+        }}</span>
+        <button mat-button type="button" (click)="discard()">{{ 'rolesPage.discard' | t }}</button>
+      }
+      <button
+        mat-flat-button
+        type="button"
+        [disabled]="changeCount() === 0 || saving()"
+        (click)="save()"
+      >
+        <mat-icon>save</mat-icon>
+        {{ (saving() ? 'common.saving' : 'rolesPage.save') | t }}
+      </button>
+    </div>
+  }
+</app-page-header>
+
+@if (!canEdit()) {
+  <p class="readonly">
+    <mat-icon aria-hidden="true">visibility</mat-icon> {{ 'common.readOnly' | t }}
+  </p>
+}
+
+@if (error()) {
+  <app-state-panel
+    icon="cloud_off"
+    tone="error"
+    [heading]="'common.loadError' | t"
+    [message]="i18n.errorMessage(error())"
+  >
+    <button mat-stroked-button type="button" (click)="load()">{{ 'common.retry' | t }}</button>
+  </app-state-panel>
+} @else if (loading()) {
+  <app-skeleton [rows]="10" />
+} @else {
+  <div class="matrix-wrap">
+    <table class="matrix" [attr.aria-label]="'rolesPage.title' | t">
+      <thead>
+        <tr>
+          <th scope="col" class="permission">{{ 'rolesPage.permission' | t }}</th>
+          @for (definition of roles(); track definition.role) {
+            <th scope="col" class="role">
+              <span class="role__name">{{ roleLabels[definition.role] | t }}</span>
+              <span class="role__count">{{
+                'rolesPage.userCount' | t: { count: definition.userCount }
+              }}</span>
+            </th>
+          }
+        </tr>
+      </thead>
+      <tbody>
+        @for (group of groups; track group.key) {
+          <tr class="group">
+            <th scope="rowgroup" class="permission">{{ group.labelKey | t }}</th>
+            @for (definition of roles(); track definition.role) {
+              <td class="role">
+                @if (definition.editable && canEdit() && group.permissions.length > 1) {
+                  <mat-checkbox
+                    [checked]="groupState(definition, group) === 'all'"
+                    [indeterminate]="groupState(definition, group) === 'some'"
+                    (change)="toggleGroup(definition, group)"
+                    [aria-label]="
+                      'rolesPage.selectGroup'
+                        | t
+                          : { group: (group.labelKey | t), role: (roleLabels[definition.role] | t) }
+                    "
+                  />
+                }
+              </td>
+            }
+          </tr>
+          @for (permission of group.permissions; track permission) {
+            <tr>
+              <th scope="row" class="permission permission--item">
+                <span>{{ permissionLabel(permission) | t }}</span>
+                <code>{{ permission }}</code>
+              </th>
+              @for (definition of roles(); track definition.role) {
+                <td class="role" [class.changed]="isChanged(definition, permission)">
+                  <mat-checkbox
+                    [checked]="granted(definition).has(permission)"
+                    [disabled]="!definition.editable || !canEdit()"
+                    (change)="toggle(definition, permission)"
+                    [aria-label]="
+                      (roleLabels[definition.role] | t) + ': ' + (permissionLabel(permission) | t)
+                    "
+                    [matTooltip]="definition.editable ? '' : ('rolesPage.adminLocked' | t)"
+                  />
+                </td>
+              }
+            </tr>
+          }
+        }
+      </tbody>
+    </table>
+  </div>
+}

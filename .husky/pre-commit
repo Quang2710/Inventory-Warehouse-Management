@@ -1,0 +1,2 @@
+# Gọi bin trực tiếp bằng node để chạy được cả khi đường dẫn dự án có ký tự đặc biệt (&).
+node node_modules/lint-staged/bin/lint-staged.js

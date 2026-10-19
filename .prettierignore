@@ -1,0 +1,7 @@
+dist
+coverage
+node_modules
+.angular
+public/mockServiceWorker.js
+package-lock.json
+CLAUDE.md

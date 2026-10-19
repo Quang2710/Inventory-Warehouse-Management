@@ -1,0 +1,263 @@
+@if (store.loadError() && !store.stocktake()) {
+  <app-state-panel
+    icon="cloud_off"
+    tone="error"
+    [heading]="'common.loadError' | t"
+    [message]="i18n.errorMessage(store.loadError())"
+  >
+    <button mat-stroked-button type="button" (click)="store.load(id())">
+      {{ 'common.retry' | t }}
+    </button>
+  </app-state-panel>
+} @else if (store.stocktake(); as stocktake) {
+  <header class="head">
+    <div class="head__title">
+      <a
+        mat-icon-button
+        [routerLink]="['/stocktakes', stocktake.id]"
+        [attr.aria-label]="'common.back' | t"
+      >
+        <mat-icon>arrow_back</mat-icon>
+      </a>
+      <div>
+        <h1>{{ 'stocktakes.count.title' | t: { code: stocktake.code } }}</h1>
+        <p class="muted">{{ stocktake.warehouseName }} · {{ stocktake.scopeLabel }}</p>
+      </div>
+      <app-status-chip [status]="statusLabels[stocktake.status]" />
+    </div>
+
+    <div class="progress">
+      <mat-progress-bar
+        mode="determinate"
+        [value]="progress() * 100"
+        [attr.aria-label]="'stocktakes.fields.progress' | t"
+      />
+      <span>{{
+        'stocktakes.count.progress'
+          | t: { counted: store.countedCount(), total: store.lines().length }
+      }}</span>
+    </div>
+
+    <div class="sync" role="status" aria-live="polite">
+      @if (!store.online()) {
+        <span class="sync__state sync__state--offline"
+          ><mat-icon aria-hidden="true">cloud_off</mat-icon
+          >{{ 'stocktakes.count.offline' | t }}</span
+        >
+      } @else if (store.syncing()) {
+        <span class="sync__state"
+          ><mat-icon aria-hidden="true">sync</mat-icon>{{ 'stocktakes.count.syncing' | t }}</span
+        >
+      } @else if (store.pendingCount() === 0) {
+        <span class="sync__state sync__state--ok">
+          <mat-icon aria-hidden="true">cloud_done</mat-icon>
+          {{
+            store.lastSyncedAt()
+              ? ('stocktakes.count.lastSynced'
+                | t: { time: (store.lastSyncedAt() | date: 'HH:mm:ss') })
+              : ('stocktakes.count.synced' | t)
+          }}
+        </span>
+      }
+      @if (store.pendingCount() > 0) {
+        <span class="sync__pending">{{
+          'stocktakes.count.pending' | t: { count: store.pendingCount() }
+        }}</span>
+        <button
+          mat-button
+          type="button"
+          [disabled]="!store.online() || store.syncing()"
+          (click)="store.sync()"
+        >
+          <mat-icon>cloud_upload</mat-icon>{{ 'stocktakes.count.syncNow' | t }}
+        </button>
+      }
+      @if (store.cachedAt(); as cachedAt) {
+        <span class="muted">{{
+          'stocktakes.count.cachedAt' | t: { time: (cachedAt | date: 'dd/MM HH:mm') }
+        }}</span>
+      }
+    </div>
+  </header>
+
+  @if (!store.editable()) {
+    <p class="banner banner--info" role="status">
+      <mat-icon aria-hidden="true">lock</mat-icon>{{ 'stocktakes.count.readOnlySession' | t }}
+    </p>
+  }
+  @if (store.staleCount() > 0) {
+    <p class="banner banner--warn" role="status">
+      <mat-icon aria-hidden="true">devices</mat-icon>
+      {{ 'stocktakes.count.staleUpdated' | t: { count: store.staleCount() } }}
+      <button mat-button type="button" (click)="store.dismissStale()">
+        {{ 'common.close' | t }}
+      </button>
+    </p>
+  }
+
+  <section class="controls">
+    <form class="scan" (ngSubmit)="onScan()">
+      <mat-form-field class="scan__field" subscriptSizing="dynamic">
+        <mat-icon matPrefix aria-hidden="true">barcode_reader</mat-icon>
+        <mat-label>{{ 'stocktakes.count.scanLabel' | t }}</mat-label>
+        <input
+          matInput
+          [formControl]="scan"
+          autocomplete="off"
+          autocapitalize="characters"
+          enterkeyhint="search"
+          [attr.aria-describedby]="'scan-hint'"
+        />
+      </mat-form-field>
+      <button
+        mat-icon-button
+        type="button"
+        class="scan__camera"
+        (click)="openCamera()"
+        [attr.aria-label]="'stocktakes.count.camera' | t"
+        [matTooltip]="'stocktakes.count.camera' | t"
+      >
+        <mat-icon>photo_camera</mat-icon>
+      </button>
+    </form>
+    <p id="scan-hint" class="muted hint">{{ 'stocktakes.count.scanHint' | t }}</p>
+
+    <div class="filters">
+      <mat-form-field subscriptSizing="dynamic">
+        <mat-label>{{ 'stocktakes.count.binFilter' | t }}</mat-label>
+        <mat-select [value]="binFilter()" (valueChange)="binFilter.set($event)">
+          <mat-option [value]="null">{{ 'stocktakes.count.allBins' | t }}</mat-option>
+          @for (bin of bins(); track bin.id) {
+            <mat-option [value]="bin.id">{{ bin.code }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+      <mat-slide-toggle [checked]="onlyUncounted()" (change)="onlyUncounted.set($event.checked)">
+        {{ 'stocktakes.count.onlyUncounted' | t }}
+      </mat-slide-toggle>
+      <mat-slide-toggle [checked]="incrementMode()" (change)="incrementMode.set($event.checked)">
+        {{ 'stocktakes.count.incrementMode' | t }}
+      </mat-slide-toggle>
+    </div>
+
+    @if (notice(); as notice) {
+      <div class="banner banner--warn" role="alert">
+        <mat-icon aria-hidden="true">search_off</mat-icon>
+        @switch (notice.kind) {
+          @case ('notFound') {
+            <span>{{ 'stocktakes.count.notFound' | t: { code: notice.code } }}</span>
+          }
+          @case ('needsBin') {
+            <span>{{ 'stocktakes.count.unexpectedNeedsBin' | t }}</span>
+          }
+          @case ('needsOnline') {
+            <span>{{ 'stocktakes.count.unexpectedNeedsOnline' | t }}</span>
+          }
+          @case ('unexpected') {
+            @if (store.editable()) {
+              <button mat-flat-button type="button" (click)="addUnexpected(notice.product)">
+                {{
+                  'stocktakes.count.addUnexpected'
+                    | t: { name: notice.product.name, bin: selectedBinCode() }
+                }}
+              </button>
+            }
+          }
+        }
+      </div>
+    }
+    @if (scanFilter(); as code) {
+      <p class="banner banner--info">
+        <span class="mono">{{ code }}</span>
+        <button mat-button type="button" (click)="clearScanFilter()">
+          {{ 'common.clearFilters' | t }}
+        </button>
+      </p>
+    }
+  </section>
+
+  @if (visibleLines().length === 0) {
+    <p class="empty">{{ 'stocktakes.count.noLines' | t }}</p>
+  } @else {
+    <cdk-virtual-scroll-viewport
+      #viewport
+      class="viewport"
+      [itemSize]="itemHeight"
+      [attr.aria-label]="'stocktakes.review.linesTitle' | t"
+    >
+      <div
+        *cdkVirtualFor="let line of visibleLines(); trackBy: trackLine"
+        class="line"
+        [class.line--counted]="line.countedQuantity !== null"
+        [class.line--highlight]="line.id === highlighted()"
+      >
+        <div class="line__info">
+          <span class="line__name">{{ line.productName }}</span>
+          <span class="line__meta">
+            <span class="mono">{{ line.locationCode }}</span> ·
+            <span class="mono">{{ line.sku }}</span>
+            @if (line.expectedQuantity !== null) {
+              ·
+              {{ 'stocktakes.count.expected' | t: { quantity: (line.expectedQuantity | number) } }}
+            }
+            @if (line.unexpected) {
+              · <strong>{{ 'stocktakes.review.unexpected' | t }}</strong>
+            }
+          </span>
+        </div>
+        <div class="line__count">
+          <button
+            mat-icon-button
+            type="button"
+            class="step"
+            [disabled]="!store.editable()"
+            (click)="step(line, -1)"
+            [attr.aria-label]="'stocktakes.count.decrease' | t"
+          >
+            <mat-icon>remove</mat-icon>
+          </button>
+          <input
+            class="qty"
+            type="number"
+            inputmode="numeric"
+            min="0"
+            [id]="'count-' + line.id"
+            [value]="draftOf(line)"
+            [disabled]="!store.editable()"
+            [attr.aria-label]="
+              ('stocktakes.count.counted' | t) + ': ' + line.productName + ' — ' + line.locationCode
+            "
+            (input)="setDraft(line, $event)"
+            (keydown.enter)="commit(line)"
+            (blur)="commit(line)"
+          />
+          <button
+            mat-icon-button
+            type="button"
+            class="step"
+            [disabled]="!store.editable()"
+            (click)="step(line, 1)"
+            [attr.aria-label]="'stocktakes.count.increase' | t"
+          >
+            <mat-icon>add</mat-icon>
+          </button>
+          <mat-icon
+            class="line__state"
+            [class.line__state--pending]="isPending(line)"
+            aria-hidden="true"
+          >
+            {{
+              isPending(line)
+                ? 'cloud_upload'
+                : line.countedQuantity !== null
+                  ? 'check_circle'
+                  : 'radio_button_unchecked'
+            }}
+          </mat-icon>
+        </div>
+      </div>
+    </cdk-virtual-scroll-viewport>
+  }
+} @else {
+  <app-skeleton [rows]="10" />
+}

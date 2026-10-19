@@ -1,0 +1,31 @@
+<div class="brand">
+  <mat-icon class="brand__logo" aria-hidden="true">warehouse</mat-icon>
+  <div>
+    <div class="brand__name">{{ 'app.name' | t }}</div>
+    <div class="brand__tagline">{{ 'app.tagline' | t }}</div>
+  </div>
+</div>
+
+<nav [attr.aria-label]="'nav.menu' | t">
+  @for (section of sections(); track section.titleKey) {
+    <div class="section" role="group" [attr.aria-labelledby]="'nav-' + $index">
+      <div class="section__title" [id]="'nav-' + $index">{{ section.titleKey | t }}</div>
+      <mat-nav-list>
+        @for (item of section.items; track item.path) {
+          <a
+            mat-list-item
+            [routerLink]="item.path"
+            routerLinkActive
+            #link="routerLinkActive"
+            [activated]="link.isActive"
+            [attr.aria-current]="link.isActive ? 'page' : null"
+            (click)="navigate.emit()"
+          >
+            <mat-icon matListItemIcon aria-hidden="true">{{ item.icon }}</mat-icon>
+            <span matListItemTitle>{{ item.labelKey | t }}</span>
+          </a>
+        }
+      </mat-nav-list>
+    </div>
+  }
+</nav>

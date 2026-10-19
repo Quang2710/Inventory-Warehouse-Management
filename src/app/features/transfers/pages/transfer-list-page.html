@@ -1,0 +1,100 @@
+<app-page-header [heading]="'transfers.title' | t" [subtitle]="'transfers.subtitle' | t">
+  <a *hasPermission="'transfer:write'" actions mat-flat-button routerLink="/transfers/new">
+    <mat-icon>add</mat-icon>
+    {{ 'transfers.create' | t }}
+  </a>
+</app-page-header>
+
+<app-data-table
+  tableId="transfers"
+  [columns]="columns"
+  [rows]="list.items()"
+  [total]="list.total()"
+  [pageIndex]="list.pageIndex()"
+  [pageSize]="list.params().size"
+  [sort]="list.params().sort"
+  [loading]="list.loading()"
+  [loaded]="list.loaded()"
+  [error]="list.error()"
+  [filtered]="list.hasFilters()"
+  [clickable]="true"
+  [ariaLabel]="'transfers.title' | t"
+  emptyIcon="local_shipping"
+  (page)="list.setPage($event.pageIndex, $event.pageSize)"
+  (sortChange)="list.setSort($event)"
+  (rowClick)="open($event)"
+  (retry)="list.reload()"
+>
+  <ng-container filters>
+    <app-search-field
+      [value]="list.params().q"
+      [placeholder]="'transfers.searchPlaceholder' | t"
+      (queryChange)="list.setQuery($event)"
+    />
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>{{ 'common.status' | t }}</mat-label>
+      <mat-select
+        [value]="list.params().filters.status"
+        (valueChange)="list.setFilter('status', $event)"
+      >
+        <mat-option [value]="null">{{ 'common.all' | t }}</mat-option>
+        @for (status of statusOptions; track status) {
+          <mat-option [value]="status">{{ statusLabels[status].labelKey | t }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>{{ 'transfers.fields.from' | t }}</mat-label>
+      <mat-select
+        [value]="list.params().filters.fromWarehouseId"
+        (valueChange)="list.setFilter('fromWarehouseId', $event)"
+      >
+        <mat-option [value]="null">{{ 'common.all' | t }}</mat-option>
+        @for (warehouse of warehouses.allActive(); track warehouse.id) {
+          <mat-option [value]="warehouse.id">{{ warehouse.name }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>{{ 'transfers.fields.to' | t }}</mat-label>
+      <mat-select
+        [value]="list.params().filters.toWarehouseId"
+        (valueChange)="list.setFilter('toWarehouseId', $event)"
+      >
+        <mat-option [value]="null">{{ 'common.all' | t }}</mat-option>
+        @for (warehouse of warehouses.allActive(); track warehouse.id) {
+          <mat-option [value]="warehouse.id">{{ warehouse.name }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  </ng-container>
+
+  <ng-template appCell="code" let-row
+    ><span class="mono">{{ row.code }}</span></ng-template
+  >
+  <ng-template appCell="route" let-row>
+    <span class="route">
+      {{ row.fromWarehouseName }}
+      <mat-icon aria-hidden="true">arrow_forward</mat-icon>
+      {{ row.toWarehouseName }}
+    </span>
+  </ng-template>
+  <ng-template appCell="transferDate" let-row>{{ row.transferDate | date }}</ng-template>
+  <ng-template appCell="expectedDate" let-row>{{
+    row.expectedDate ? (row.expectedDate | date) : '—'
+  }}</ng-template>
+  <ng-template appCell="totalQuantity" let-row>
+    {{ row.totalQuantity | number }}
+    @if (
+      row.receivedQuantity !== null &&
+      row.receivedQuantity !== undefined &&
+      row.receivedQuantity < row.totalQuantity
+    ) {
+      <span class="short">({{ row.receivedQuantity | number }})</span>
+    }
+  </ng-template>
+  <ng-template appCell="createdBy" let-row>{{ row.createdBy.fullName }}</ng-template>
+  <ng-template appCell="status" let-row
+    ><app-status-chip [status]="statusLabels[row.status]"
+  /></ng-template>
+</app-data-table>

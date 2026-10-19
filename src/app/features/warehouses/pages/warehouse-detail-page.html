@@ -1,0 +1,161 @@
+@let warehouse = current();
+<app-page-header [heading]="warehouse.name" [subtitle]="warehouse.code + ' · ' + warehouse.address">
+  <div actions class="header-actions">
+    <app-status-chip [status]="statusLabels[warehouse.status]" />
+    @if (canEdit()) {
+      <button mat-stroked-button type="button" (click)="editWarehouse()">
+        <mat-icon>edit</mat-icon>{{ 'common.edit' | t }}
+      </button>
+    }
+  </div>
+</app-page-header>
+
+<div class="stats">
+  <div class="stat">
+    <span class="stat__label">{{ 'warehouses.stats.bins' | t }}</span>
+    <span class="stat__value"
+      >{{ warehouse.usedBinCount | number }} / {{ warehouse.binCount | number }}</span
+    >
+  </div>
+  <div class="stat">
+    <span class="stat__label">{{ 'warehouses.stats.skus' | t }}</span>
+    <span class="stat__value">{{ warehouse.skuCount | number }}</span>
+  </div>
+  <div class="stat">
+    <span class="stat__label">{{ 'warehouses.stats.quantity' | t }}</span>
+    <span class="stat__value">{{ warehouse.totalQuantity | number }}</span>
+  </div>
+  <div class="stat">
+    <span class="stat__label">{{ 'warehouses.stats.value' | t }}</span>
+    <span class="stat__value">{{
+      warehouse.totalValue | currency: 'VND' : 'symbol' : '1.0-0'
+    }}</span>
+  </div>
+</div>
+
+<mat-tab-group
+  [selectedIndex]="tabIndex()"
+  (selectedIndexChange)="selectTab($event)"
+  animationDuration="0ms"
+>
+  <mat-tab [label]="'warehouses.tabs.map' | t">
+    <div class="tab-body">
+      @if (mapError()) {
+        <app-state-panel
+          icon="cloud_off"
+          tone="error"
+          [heading]="'common.loadError' | t"
+          [message]="i18n.errorMessage(mapError())"
+        >
+          <button mat-stroked-button type="button" (click)="loadMap()">
+            {{ 'common.retry' | t }}
+          </button>
+        </app-state-panel>
+      } @else if (map(); as map) {
+        @if (map.zones.length === 0) {
+          <app-state-panel icon="grid_off" [heading]="'map.empty' | t" />
+        } @else {
+          <div class="map-toolbar">
+            <mat-chip-listbox
+              [value]="zoneId()"
+              (change)="zoneId.set($event.value ?? null)"
+              [attr.aria-label]="'map.zone' | t"
+            >
+              <mat-chip-option [value]="null" [selected]="zoneId() === null">{{
+                'map.allZones' | t
+              }}</mat-chip-option>
+              @for (zone of map.zones; track zone.id) {
+                <mat-chip-option [value]="zone.id">{{ zone.name }}</mat-chip-option>
+              }
+            </mat-chip-listbox>
+            <span class="map-summary">
+              {{
+                'map.summary'
+                  | t
+                    : {
+                        used: map.usedBinCount,
+                        total: map.binCount,
+                        fill: (fillRate() * 100 | number: '1.0-0') + '%',
+                      }
+              }}
+            </span>
+          </div>
+          <div class="map-layout">
+            <app-warehouse-map
+              class="map-layout__map"
+              [map]="map"
+              [zoneId]="zoneId()"
+              [selectedBinId]="selectedBin()?.id ?? null"
+              (binSelect)="selectBin($event)"
+            />
+            <app-bin-panel
+              class="map-layout__panel"
+              [bin]="selectedBin()"
+              [items]="binItems()"
+              [loading]="binLoading()"
+            />
+          </div>
+        }
+      } @else {
+        <app-skeleton [rows]="8" />
+      }
+    </div>
+  </mat-tab>
+
+  <mat-tab [label]="'warehouses.tabs.locations' | t">
+    <div class="tab-body">
+      @if (locationsError()) {
+        <app-state-panel
+          icon="cloud_off"
+          tone="error"
+          [heading]="'common.loadError' | t"
+          [message]="i18n.errorMessage(locationsError())"
+        >
+          <button mat-stroked-button type="button" (click)="loadLocations()">
+            {{ 'common.retry' | t }}
+          </button>
+        </app-state-panel>
+      } @else if (locations(); as locations) {
+        <app-location-tree
+          [locations]="locations"
+          [editable]="canEdit()"
+          (add)="addLocation($event)"
+          (generate)="generateRack($event)"
+          (edit)="editLocation($event)"
+          (remove)="removeLocation($event)"
+        />
+      } @else {
+        <app-skeleton [rows]="8" />
+      }
+    </div>
+  </mat-tab>
+
+  <mat-tab [label]="'warehouses.tabs.info' | t">
+    <div class="tab-body">
+      <dl class="info">
+        <dt>{{ 'warehouses.fields.code' | t }}</dt>
+        <dd class="mono">{{ warehouse.code }}</dd>
+        <dt>{{ 'warehouses.fields.name' | t }}</dt>
+        <dd>{{ warehouse.name }}</dd>
+        <dt>{{ 'warehouses.fields.address' | t }}</dt>
+        <dd>{{ warehouse.address }}</dd>
+        <dt>{{ 'warehouses.fields.phone' | t }}</dt>
+        <dd>{{ warehouse.phone ?? '—' }}</dd>
+        <dt>{{ 'warehouses.fields.managerName' | t }}</dt>
+        <dd>{{ warehouse.managerName ?? '—' }}</dd>
+        <dt>{{ 'warehouses.fields.status' | t }}</dt>
+        <dd><app-status-chip [status]="statusLabels[warehouse.status]" /></dd>
+      </dl>
+      @if (canEdit()) {
+        <div class="info-actions">
+          <button mat-stroked-button type="button" (click)="editWarehouse()">
+            <mat-icon>edit</mat-icon>{{ 'common.edit' | t }}
+          </button>
+          <button mat-button type="button" class="danger" (click)="deleteWarehouse()">
+            <mat-icon>delete</mat-icon>{{ 'common.delete' | t }}
+          </button>
+        </div>
+      }
+    </div>
+  </mat-tab>
+</mat-tab-group>

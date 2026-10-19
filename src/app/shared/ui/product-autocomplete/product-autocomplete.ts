@@ -1,0 +1,164 @@
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  effect,
+  inject,
+  input,
+  signal,
+} from '@angular/core';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import {
+  MatAutocompleteModule,
+  type MatAutocompleteSelectedEvent,
+} from '@angular/material/autocomplete';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import {
+  catchError,
+  debounceTime,
+  distinctUntilChanged,
+  filter,
+  map,
+  of,
+  startWith,
+  switchMap,
+  tap,
+} from 'rxjs';
+
+import { TranslatePipe } from '../../../core/i18n/translate.pipe';
+import { ProductsApi } from '../../data-access/products.api';
+import { FieldErrorPipe } from '../../forms/field-error.pipe';
+
+/** Thông tin sản phẩm tối thiểu để hiển thị/ghi vào dòng chứng từ. */
+export interface ProductOption {
+  id: string;
+  sku: string;
+  name: string;
+  unit: string;
+}
+
+/**
+ * Ô chọn sản phẩm có tìm kiếm phía server (SKU, tên, mã vạch). Gắn với một
+ * `FormControl<ProductOption | null>` của form cha.
+ */
+@Component({
+  selector: 'app-product-autocomplete',
+  imports: [
+    ReactiveFormsModule,
+    MatAutocompleteModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatProgressSpinnerModule,
+    TranslatePipe,
+    FieldErrorPipe,
+  ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <mat-form-field class="field">
+      <mat-label>{{ label() }}</mat-label>
+      <input
+        matInput
+        [formControl]="search"
+        [matAutocomplete]="auto"
+        (blur)="restore()"
+        autocomplete="off"
+        [attr.aria-invalid]="control().invalid && control().touched"
+      />
+      @if (searching()) {
+        <mat-progress-spinner matSuffix mode="indeterminate" diameter="18" />
+      }
+      <mat-autocomplete
+        #auto="matAutocomplete"
+        [displayWith]="display"
+        (optionSelected)="select($event)"
+      >
+        @for (option of options(); track option.id) {
+          <mat-option [value]="option">
+            <span class="sku">{{ option.sku }}</span> {{ option.name }}
+          </mat-option>
+        } @empty {
+          @if (search.value && !searching()) {
+            <mat-option disabled>{{ 'common.noResults' | t }}</mat-option>
+          }
+        }
+      </mat-autocomplete>
+      @if (control().invalid && control().touched) {
+        <mat-error>{{ control() | fieldError }}</mat-error>
+      }
+    </mat-form-field>
+  `,
+  styles: `
+    .field {
+      width: 100%;
+    }
+    .sku {
+      font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+      color: var(--mat-sys-on-surface-variant);
+    }
+  `,
+})
+export class ProductAutocomplete {
+  private readonly api = inject(ProductsApi);
+
+  readonly control = input.required<FormControl<ProductOption | null>>();
+  readonly label = input.required<string>();
+
+  protected readonly search = new FormControl<string | ProductOption>('', { nonNullable: true });
+  protected readonly options = signal<ProductOption[]>([]);
+  protected readonly searching = signal(false);
+  protected readonly display = (value: string | ProductOption | null): string =>
+    value && typeof value === 'object' ? `${value.sku} — ${value.name}` : (value ?? '');
+
+  constructor() {
+    const destroyRef = inject(DestroyRef);
+    this.search.valueChanges
+      .pipe(
+        filter((value): value is string => typeof value === 'string'),
+        map((value) => value.trim()),
+        debounceTime(250),
+        distinctUntilChanged(),
+        tap(() => this.searching.set(true)),
+        switchMap((q) =>
+          this.api.list({ q, size: 20, status: 'ACTIVE', sort: 'sku,asc' }).pipe(
+            map((page) => page.items.map(({ id, sku, name, unit }) => ({ id, sku, name, unit }))),
+            catchError(() => of([])),
+          ),
+        ),
+        takeUntilDestroyed(destroyRef),
+      )
+      .subscribe((options) => {
+        this.searching.set(false);
+        this.options.set(options);
+      });
+
+    // Đồng bộ hiển thị khi form cha đặt/reset giá trị.
+    toObservable(this.control)
+      .pipe(
+        switchMap((control) => control.valueChanges.pipe(startWith(control.value))),
+        takeUntilDestroyed(destroyRef),
+      )
+      .subscribe((value) => this.search.setValue(value ?? '', { emitEvent: false }));
+    effect(() => {
+      if (this.control().disabled) this.search.disable({ emitEvent: false });
+      else this.search.enable({ emitEvent: false });
+    });
+  }
+
+  protected select(event: MatAutocompleteSelectedEvent): void {
+    const control = this.control();
+    control.setValue(event.option.value as ProductOption);
+    control.markAsDirty();
+  }
+
+  /** Rời ô khi chưa chọn gợi ý → trả lại sản phẩm đang chọn. */
+  protected restore(): void {
+    const control = this.control();
+    control.markAsTouched();
+    if (typeof this.search.value === 'string') {
+      this.search.setValue(control.value ?? '', { emitEvent: false });
+    }
+  }
+}
