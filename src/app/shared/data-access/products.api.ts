@@ -20,6 +20,12 @@ export class ProductsApi {
     });
   }
 
+  get(id: string): Observable<Product> {
+    return this.http.get<Product>(`${this.baseUrl}/products/${id}`, {
+      context: httpContext(SKIP_LOADING),
+    });
+  }
+
   byBarcode(barcode: string): Observable<Product> {
     return this.http.get<Product>(
       `${this.baseUrl}/products/by-barcode/${encodeURIComponent(barcode)}`,

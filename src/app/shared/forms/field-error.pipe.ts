@@ -25,6 +25,12 @@ export class FieldErrorPipe implements PipeTransform {
     if (errors['email']) return this.i18n.t('validation.email');
     if (errors['integer']) return this.i18n.t('validation.integer');
     if (errors['pattern']) return this.i18n.t('validation.pattern');
+    // Validator nghiệp vụ trả { messageKey: TranslationKey, params? } (vd lỗi HSD, số serial).
+    for (const error of Object.values(errors) as { messageKey?: unknown; params?: object }[]) {
+      if (error && typeof error.messageKey === 'string') {
+        return this.i18n.translate(error.messageKey, error.params as Record<string, string>);
+      }
+    }
     if (typeof errors['message'] === 'string') return errors['message'];
     return this.i18n.t('validation.invalid');
   }

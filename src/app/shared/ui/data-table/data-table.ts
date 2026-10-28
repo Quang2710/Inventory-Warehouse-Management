@@ -41,25 +41,27 @@ export interface TableColumn {
   required?: boolean;
 }
 
-/**
- * Ngữ cảnh ô: Angular không suy ra được kiểu dòng cho `ng-template` truyền vào bảng,
- * nên `$implicit` có kiểu `any` có chủ đích (mỗi trang biết kiểu dòng của mình).
- */
-interface CellContext {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  $implicit: any;
+/** Ngữ cảnh ô: `$implicit` là dòng dữ liệu. */
+interface CellContext<T> {
+  $implicit: T;
 }
 
-/** `<ng-template appCell="status" let-row>…</ng-template>` — tùy biến ô của một cột. */
+/**
+ * `<ng-template appCell="status" [appCellOf]="rows" let-row>…</ng-template>` — tùy biến ô
+ * của một cột. `appCellOf` chỉ dùng để Angular suy ra kiểu dòng (giống `matCellDef`); bỏ qua
+ * thì dòng có kiểu `any`.
+ */
 @Directive({ selector: 'ng-template[appCell]' })
-export class CellTemplate {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export class CellTemplate<T = any> {
   readonly appCell = input.required<string>();
-  readonly template = inject<TemplateRef<CellContext>>(TemplateRef);
+  readonly appCellOf = input<readonly T[]>();
+  readonly template = inject<TemplateRef<CellContext<T>>>(TemplateRef);
 
-  static ngTemplateContextGuard(
-    _directive: CellTemplate,
+  static ngTemplateContextGuard<T>(
+    _directive: CellTemplate<T>,
     _context: unknown,
-  ): _context is CellContext {
+  ): _context is CellContext<T> {
     return true;
   }
 }

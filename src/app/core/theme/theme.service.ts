@@ -1,4 +1,4 @@
-import { DOCUMENT, Injectable, effect, inject, signal } from '@angular/core';
+import { DOCUMENT, Injectable, computed, effect, inject, signal } from '@angular/core';
 
 import { BrowserStorage, STORAGE_KEYS } from '../storage/browser-storage';
 
@@ -20,8 +20,19 @@ export class ThemeService {
 
   readonly mode = signal<ThemeMode>(this.initialMode());
   readonly modes = THEME_MODES;
+  /** Hệ điều hành đang ở chế độ tối (cho chế độ "system"). */
+  private readonly systemDark = signal(false);
+  /** Giao diện thực tế đang tối — dùng cho thành phần tự vẽ màu (biểu đồ). */
+  readonly isDark = computed(() =>
+    this.mode() === 'system' ? this.systemDark() : this.mode() === 'dark',
+  );
 
   constructor() {
+    const query = this.document.defaultView?.matchMedia?.('(prefers-color-scheme: dark)');
+    if (query) {
+      this.systemDark.set(query.matches);
+      query.addEventListener?.('change', (event) => this.systemDark.set(event.matches));
+    }
     effect(() => {
       const mode = this.mode();
       this.document.documentElement.style.colorScheme = mode === 'system' ? 'light dark' : mode;

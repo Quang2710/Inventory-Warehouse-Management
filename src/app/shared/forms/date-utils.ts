@@ -20,3 +20,12 @@ export function fromLocalDate(value: string | null | undefined): Date | null {
 export function today(): string {
   return toLocalDate(new Date());
 }
+
+/**
+ * Date của datepicker (nửa đêm giờ trình duyệt) → `YYYY-MM-DD` theo ngày người dùng đã chọn.
+ * Không dùng `toLocalDate` cho giá trị datepicker: trình duyệt ở múi giờ khác UTC+7 sẽ lệch ngày.
+ */
+export function pickerDateToApi(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}

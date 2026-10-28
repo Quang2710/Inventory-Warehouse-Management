@@ -28,6 +28,7 @@ import {
   tap,
 } from 'rxjs';
 
+import type { Product } from '../../../core/api';
 import { TranslatePipe } from '../../../core/i18n/translate.pipe';
 import { ProductsApi } from '../../data-access/products.api';
 import { FieldErrorPipe } from '../../forms/field-error.pipe';
@@ -38,6 +39,29 @@ export interface ProductOption {
   sku: string;
   name: string;
   unit: string;
+  barcode?: string;
+  trackLot?: boolean;
+  trackExpiry?: boolean;
+  trackSerial?: boolean;
+  /** Giá nhập / giá bán tham chiếu — gợi ý đơn giá khi lập phiếu. */
+  costPrice?: number;
+  salePrice?: number;
+}
+
+/** Product (contract) → ProductOption. */
+export function toProductOption(product: Product): ProductOption {
+  return {
+    id: product.id,
+    sku: product.sku,
+    name: product.name,
+    unit: product.unit,
+    barcode: product.barcode,
+    trackLot: product.trackLot,
+    trackExpiry: product.trackExpiry,
+    trackSerial: product.trackSerial,
+    costPrice: product.costPrice,
+    salePrice: product.salePrice,
+  };
 }
 
 /**
@@ -118,12 +142,13 @@ export class ProductAutocomplete {
       .pipe(
         filter((value): value is string => typeof value === 'string'),
         map((value) => value.trim()),
+        // Báo "đang tìm" ngay khi gõ để không hiện "không có kết quả" trong lúc chờ debounce.
+        tap(() => this.searching.set(true)),
         debounceTime(250),
         distinctUntilChanged(),
-        tap(() => this.searching.set(true)),
         switchMap((q) =>
           this.api.list({ q, size: 20, status: 'ACTIVE', sort: 'sku,asc' }).pipe(
-            map((page) => page.items.map(({ id, sku, name, unit }) => ({ id, sku, name, unit }))),
+            map((page) => page.items.map(toProductOption)),
             catchError(() => of([])),
           ),
         ),

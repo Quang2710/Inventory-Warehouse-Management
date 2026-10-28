@@ -1,4 +1,5 @@
 @use '@angular/material' as mat;
+@use 'styles/documents';
 
 // Material 3, theme-type `color-scheme`: màu sáng/tối dùng light-dark() theo `color-scheme`
 // của <html> (ThemeService đặt light | dark | "light dark" = theo hệ điều hành).

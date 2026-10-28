@@ -33,7 +33,7 @@ export interface PromptDialogData {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <h2 mat-dialog-title>{{ data.title }}</h2>
-    <form (ngSubmit)="submit()">
+    <form (submit)="$event.preventDefault(); submit()">
       <mat-dialog-content>
         @if (data.message) {
           <p>{{ data.message }}</p>
