@@ -1,11 +1,20 @@
 import type {
+  AbcClass,
+  AlertType,
   AuditAction,
   AuditEntityType,
   CustomerType,
+  DocumentStatus,
+  DocumentType,
+  ExpiryStatus,
+  IssueReason,
   LocationStatus,
   LocationType,
+  MovementType,
   PartnerStatus,
   Role,
+  SerialStatus,
+  StockStatus,
   StocktakeStatus,
   TransferStatus,
   UserStatus,
@@ -120,3 +129,77 @@ export const AUDIT_ENTITY_LABEL_KEYS = Object.fromEntries(
     ] as const satisfies readonly AuditEntityType[]
   ).map((entity) => [entity, `audit.entities.${entity}` as TranslationKey]),
 ) as Readonly<Record<AuditEntityType, TranslationKey>>;
+
+/** Phiếu nhập / phiếu xuất. */
+export const DOCUMENT_STATUS: Readonly<Record<DocumentStatus, StatusLabel>> = {
+  DRAFT: { labelKey: 'statuses.documentDraft', tone: 'neutral' },
+  PENDING: { labelKey: 'statuses.documentPending', tone: 'warning' },
+  APPROVED: { labelKey: 'statuses.documentApproved', tone: 'success' },
+  REJECTED: { labelKey: 'statuses.documentRejected', tone: 'danger' },
+  CANCELLED: { labelKey: 'statuses.documentCancelled', tone: 'neutral' },
+};
+
+export const ISSUE_REASON_LABEL_KEYS: Readonly<Record<IssueReason, TranslationKey>> = {
+  SALE: 'issueReasons.SALE',
+  RETURN_TO_SUPPLIER: 'issueReasons.RETURN_TO_SUPPLIER',
+  INTERNAL_USE: 'issueReasons.INTERNAL_USE',
+  DAMAGED: 'issueReasons.DAMAGED',
+  OTHER: 'issueReasons.OTHER',
+};
+
+export const EXPIRY_STATUS: Readonly<Record<ExpiryStatus, StatusLabel>> = {
+  NO_EXPIRY: { labelKey: 'expiry.NO_EXPIRY', tone: 'neutral' },
+  VALID: { labelKey: 'expiry.VALID', tone: 'success' },
+  EXPIRING: { labelKey: 'expiry.EXPIRING', tone: 'warning' },
+  EXPIRED: { labelKey: 'expiry.EXPIRED', tone: 'danger' },
+};
+
+export const SERIAL_STATUS: Readonly<Record<SerialStatus, StatusLabel>> = {
+  IN_STOCK: { labelKey: 'serials.statuses.IN_STOCK', tone: 'success' },
+  IN_TRANSIT: { labelKey: 'serials.statuses.IN_TRANSIT', tone: 'warning' },
+  ISSUED: { labelKey: 'serials.statuses.ISSUED', tone: 'info' },
+  WRITTEN_OFF: { labelKey: 'serials.statuses.WRITTEN_OFF', tone: 'danger' },
+};
+
+export const ALERT_TYPE: Readonly<Record<AlertType, StatusLabel & { icon: string }>> = {
+  OUT_OF_STOCK: {
+    labelKey: 'alerts.types.OUT_OF_STOCK',
+    tone: 'danger',
+    icon: 'remove_shopping_cart',
+  },
+  LOW_STOCK: { labelKey: 'alerts.types.LOW_STOCK', tone: 'warning', icon: 'trending_down' },
+  EXPIRED: { labelKey: 'alerts.types.EXPIRED', tone: 'danger', icon: 'event_busy' },
+  EXPIRING: { labelKey: 'alerts.types.EXPIRING', tone: 'warning', icon: 'schedule' },
+};
+
+export const MOVEMENT_TYPE_LABEL_KEYS: Readonly<Record<MovementType, TranslationKey>> = {
+  RECEIPT: 'movementTypes.RECEIPT',
+  RECEIPT_CANCEL: 'movementTypes.RECEIPT_CANCEL',
+  ISSUE: 'movementTypes.ISSUE',
+  ISSUE_CANCEL: 'movementTypes.ISSUE_CANCEL',
+  TRANSFER_OUT: 'movementTypes.TRANSFER_OUT',
+  TRANSFER_IN: 'movementTypes.TRANSFER_IN',
+  TRANSFER_CANCEL: 'movementTypes.TRANSFER_CANCEL',
+  ADJUSTMENT: 'movementTypes.ADJUSTMENT',
+};
+
+/** Đường dẫn màn hình chi tiết của chứng từ (liên kết từ thẻ kho, serial…). */
+export const DOCUMENT_ROUTES: Readonly<Record<DocumentType, string | null>> = {
+  GOODS_RECEIPT: '/goods-receipts',
+  GOODS_ISSUE: '/goods-issues',
+  TRANSFER: '/transfers',
+  STOCKTAKE: '/stocktakes',
+  ADJUSTMENT: null,
+};
+
+export const ABC_CLASS: Readonly<Record<AbcClass, StatusLabel>> = {
+  A: { labelKey: 'reports.abc.classA', tone: 'danger' },
+  B: { labelKey: 'reports.abc.classB', tone: 'warning' },
+  C: { labelKey: 'reports.abc.classC', tone: 'neutral' },
+};
+
+export const STOCK_STATUS: Readonly<Record<StockStatus, StatusLabel>> = {
+  IN_STOCK: { labelKey: 'stock.statuses.IN_STOCK', tone: 'success' },
+  LOW_STOCK: { labelKey: 'stock.statuses.LOW_STOCK', tone: 'warning' },
+  OUT_OF_STOCK: { labelKey: 'stock.statuses.OUT_OF_STOCK', tone: 'danger' },
+};

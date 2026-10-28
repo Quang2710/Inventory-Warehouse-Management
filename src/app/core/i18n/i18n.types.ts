@@ -15,4 +15,5 @@ type Leaves<T, Prefix extends string = ''> = {
 /** Khóa dịch hợp lệ, vd `'auth.login.title'` — sai khóa sẽ lỗi biên dịch. */
 export type TranslationKey = Leaves<typeof vi>;
 
-export type TranslationParams = Readonly<Record<string, string | number>>;
+/** `null`/`undefined` (vd kết quả pipe `date`/`number`) được thay bằng chuỗi rỗng. */
+export type TranslationParams = Readonly<Record<string, string | number | null | undefined>>;

@@ -21,4 +21,7 @@ export const MODULE_ACCESS = {
   users: { permissions: ['user:read'] },
   roles: { permissions: ['role:read'] },
   auditLogs: { permissions: ['audit:read'] },
+  alerts: { permissions: ['stock:read'] },
+  scan: { permissions: ['product:read'] },
+  reports: { permissions: ['report:read'] },
 } as const satisfies Record<string, RouteAccess>;

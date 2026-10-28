@@ -37,7 +37,7 @@ function interpolate(template: string, params?: TranslationParams): string {
     return template;
   }
   return template.replace(/\{(\w+)\}/g, (match, name: string) =>
-    name in params ? String(params[name]) : match,
+    name in params ? String(params[name] ?? '') : match,
   );
 }
 

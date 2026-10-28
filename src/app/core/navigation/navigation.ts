@@ -26,6 +26,12 @@ export const NAVIGATION: readonly NavSection[] = [
         path: '/dashboard',
         access: MODULE_ACCESS.dashboard,
       },
+      {
+        labelKey: 'nav.alerts',
+        icon: 'notifications',
+        path: '/alerts',
+        access: MODULE_ACCESS.alerts,
+      },
     ],
   },
   {
@@ -48,6 +54,7 @@ export const NAVIGATION: readonly NavSection[] = [
   {
     titleKey: 'nav.sections.operations',
     items: [
+      { labelKey: 'nav.scan', icon: 'barcode_scanner', path: '/scan', access: MODULE_ACCESS.scan },
       {
         labelKey: 'nav.warehouses',
         icon: 'warehouse',
@@ -79,11 +86,34 @@ export const NAVIGATION: readonly NavSection[] = [
         path: '/stocktakes',
         access: MODULE_ACCESS.stocktakes,
       },
+    ],
+  },
+  {
+    titleKey: 'nav.sections.reports',
+    items: [
       {
         labelKey: 'nav.stockMovements',
         icon: 'swap_vert',
         path: '/stock-movements',
         access: MODULE_ACCESS.stockMovements,
+      },
+      {
+        labelKey: 'nav.inventorySummary',
+        icon: 'table_chart',
+        path: '/reports/inventory-summary',
+        access: MODULE_ACCESS.reports,
+      },
+      {
+        labelKey: 'nav.stockValue',
+        icon: 'payments',
+        path: '/reports/stock-value',
+        access: MODULE_ACCESS.reports,
+      },
+      {
+        labelKey: 'nav.abc',
+        icon: 'leaderboard',
+        path: '/reports/abc',
+        access: MODULE_ACCESS.reports,
       },
     ],
   },

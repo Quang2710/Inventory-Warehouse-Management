@@ -68,6 +68,7 @@ export const PERMISSION_GROUPS = [
   { key: 'user', labelKey: 'permissionGroups.user', permissions: ['user:read', 'user:write'] },
   { key: 'role', labelKey: 'permissionGroups.role', permissions: ['role:read', 'role:write'] },
   { key: 'audit', labelKey: 'permissionGroups.audit', permissions: ['audit:read'] },
+  { key: 'report', labelKey: 'permissionGroups.report', permissions: ['report:read'] },
 ] as const satisfies readonly PermissionGroup[];
 
 type ListedPermission = (typeof PERMISSION_GROUPS)[number]['permissions'][number];

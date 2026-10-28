@@ -15,6 +15,34 @@
 
   <span class="spacer"></span>
 
+  @if (canScan()) {
+    <a
+      mat-icon-button
+      routerLink="/scan"
+      [attr.aria-label]="'nav.scan' | t"
+      [matTooltip]="'nav.scan' | t"
+    >
+      <mat-icon>barcode_scanner</mat-icon>
+    </a>
+  }
+
+  @if (alertCount() !== null) {
+    <a
+      mat-icon-button
+      routerLink="/alerts"
+      [attr.aria-label]="'header.alerts' | t: { count: alertCount() ?? 0 }"
+      [matTooltip]="'header.alerts' | t: { count: alertCount() ?? 0 }"
+    >
+      <mat-icon
+        [matBadge]="alertCount() || null"
+        [matBadgeColor]="alertCritical() > 0 ? 'warn' : 'accent'"
+        matBadgeSize="small"
+        aria-hidden="false"
+        >{{ alertCritical() > 0 ? 'notification_important' : 'notifications' }}</mat-icon
+      >
+    </a>
+  }
+
   @if (demoMode()) {
     <button
       mat-icon-button
@@ -93,6 +121,12 @@
       <div class="account-card__meta">{{ user().username }} · {{ roleLabel() | t }}</div>
     </div>
     <mat-divider />
+    @if (installable()) {
+      <button mat-menu-item type="button" (click)="install.emit()">
+        <mat-icon>install_mobile</mat-icon>
+        <span>{{ 'pwa.install' | t }}</span>
+      </button>
+    }
     <button mat-menu-item type="button" (click)="logout.emit()">
       <mat-icon>logout</mat-icon>
       <span>{{ 'header.logout' | t }}</span>

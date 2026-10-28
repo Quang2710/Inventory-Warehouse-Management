@@ -1,10 +1,12 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { RouterLink } from '@angular/router';
 
 import type { CurrentUser } from '../../core/api';
 import type { Language, TranslationKey } from '../../core/i18n/i18n.types';
@@ -22,7 +24,9 @@ const THEME_OPTIONS: Readonly<Record<ThemeMode, { icon: string; labelKey: Transl
 @Component({
   selector: 'app-header',
   imports: [
+    RouterLink,
     MatToolbarModule,
+    MatBadgeModule,
     MatButtonModule,
     MatIconModule,
     MatMenuModule,
@@ -40,12 +44,20 @@ export class Header {
   readonly languages = input.required<readonly Language[]>();
   readonly themeMode = input.required<ThemeMode>();
   readonly demoMode = input(false);
+  /** Số cảnh báo tồn kho; `null` = người dùng không xem được cảnh báo (ẩn chuông). */
+  readonly alertCount = input<number | null>(null);
+  readonly alertCritical = input(0);
+  /** Có thể cài ứng dụng (PWA) — hiện mục "Cài ứng dụng". */
+  readonly installable = input(false);
+  /** Mở màn quét mã (null = không có quyền). */
+  readonly canScan = input(false);
 
   readonly menuToggle = output<void>();
   readonly languageChange = output<Language>();
   readonly themeModeChange = output<ThemeMode>();
   readonly logout = output<void>();
   readonly demoReset = output<void>();
+  readonly install = output<void>();
 
   protected readonly themeModes = THEME_MODES;
   protected readonly themeOptions = THEME_OPTIONS;

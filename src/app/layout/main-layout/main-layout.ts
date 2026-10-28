@@ -1,17 +1,27 @@
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter, firstValueFrom, map } from 'rxjs';
 
 import { AuthStore } from '../../core/auth/auth.store';
+import { MODULE_ACCESS } from '../../core/auth/module-access';
 import { DemoService } from '../../core/demo/demo.service';
 import { I18nService } from '../../core/i18n/i18n.service';
 import type { Language } from '../../core/i18n/i18n.types';
 import { TranslatePipe } from '../../core/i18n/translate.pipe';
 import { NotificationService } from '../../core/notification/notification.service';
+import { PwaService } from '../../core/pwa/pwa.service';
 import { ThemeService, type ThemeMode } from '../../core/theme/theme.service';
+import { AlertsStore } from '../../features/alerts/data-access/alerts.store';
 import { ConfirmService } from '../../shared/ui/confirm-dialog/confirm.service';
 import { Breadcrumb, buildBreadcrumbs } from '../breadcrumb/breadcrumb';
 import { Header } from '../header/header';
@@ -34,8 +44,25 @@ export class MainLayout {
   protected readonly auth = inject(AuthStore);
   protected readonly i18n = inject(I18nService);
   protected readonly theme = inject(ThemeService);
+  protected readonly pwa = inject(PwaService);
+  private readonly alerts = inject(AlertsStore);
+
+  private readonly canSeeAlerts = computed(() => this.auth.canAccess(MODULE_ACCESS.alerts));
+  protected readonly canScan = computed(() => this.auth.canAccess(MODULE_ACCESS.scan));
+  protected readonly alertCount = computed(() =>
+    this.canSeeAlerts() ? this.alerts.total() : null,
+  );
+  protected readonly alertCritical = this.alerts.critical;
 
   protected readonly demoMode = this.demo.enabled;
+
+  constructor() {
+    // Theo dõi cảnh báo khi người dùng có quyền xem tồn (đổi quyền → dừng / chạy lại).
+    effect(() => {
+      if (this.canSeeAlerts()) this.alerts.start();
+      else this.alerts.stop();
+    });
+  }
 
   protected readonly isHandset = toSignal(
     inject(BreakpointObserver)
