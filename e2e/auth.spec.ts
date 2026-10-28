@@ -65,7 +65,7 @@ test('mở link sâu khi chưa đăng nhập → đăng nhập xong quay lại �
 
   await loginWithForm(page, 'ketoan', 'Ketoan@123');
   await expect(page).toHaveURL(/\/goods-receipts$/);
-  await expect(page.getByRole('heading', { name: t.system.comingSoonTitle })).toBeVisible();
+  await expect(page.getByRole('heading', { name: t.receipts.title, level: 1 })).toBeVisible();
   await expect(page.getByRole('navigation', { name: t.nav.breadcrumb })).toContainText(
     t.nav.goodsReceipts,
   );
