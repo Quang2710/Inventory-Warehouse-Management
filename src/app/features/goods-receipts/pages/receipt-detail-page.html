@@ -1,0 +1,181 @@
+@let receipt = current();
+<app-page-header
+  [heading]="receipt.code"
+  [subtitle]="receipt.warehouseName + ' · ' + receipt.supplierName"
+>
+  <div actions class="doc-actions">
+    <app-status-chip [status]="statusLabels[receipt.status]" />
+    <button mat-stroked-button type="button" [disabled]="printing()" (click)="print()">
+      <mat-icon>print</mat-icon>{{ 'documents.actions.print' | t }}
+    </button>
+    @if (editable()) {
+      <a mat-stroked-button [routerLink]="['/goods-receipts', receipt.id, 'edit']">
+        <mat-icon>edit</mat-icon>{{ 'common.edit' | t }}
+      </a>
+      <button
+        mat-flat-button
+        type="button"
+        [disabled]="workflow.busy()"
+        (click)="workflow.submit()"
+      >
+        <mat-icon>send</mat-icon>{{ 'documents.actions.submit' | t }}
+      </button>
+    }
+    @if (deletable()) {
+      <button
+        mat-button
+        type="button"
+        class="doc-danger"
+        [disabled]="workflow.busy()"
+        (click)="workflow.remove()"
+      >
+        <mat-icon>delete</mat-icon>{{ 'common.delete' | t }}
+      </button>
+    }
+    @if (decidable()) {
+      <button
+        mat-button
+        type="button"
+        class="doc-danger"
+        [disabled]="workflow.busy()"
+        (click)="workflow.reject()"
+      >
+        <mat-icon>block</mat-icon>{{ 'documents.actions.reject' | t }}
+      </button>
+      <button
+        mat-flat-button
+        type="button"
+        [disabled]="workflow.busy()"
+        (click)="workflow.approve()"
+      >
+        <mat-icon>task_alt</mat-icon>{{ 'documents.actions.approve' | t }}
+      </button>
+    }
+    @if (cancellable()) {
+      <button
+        mat-button
+        type="button"
+        class="doc-danger"
+        [disabled]="workflow.busy()"
+        (click)="workflow.cancel()"
+      >
+        <mat-icon>cancel</mat-icon>{{ 'documents.actions.cancel' | t }}
+      </button>
+    }
+  </div>
+</app-page-header>
+
+<div class="doc-layout">
+  <section class="doc-card">
+    @if (receipt.status === 'REJECTED' && receipt.rejectedReason) {
+      <p class="doc-banner doc-banner--error" role="status">
+        <mat-icon aria-hidden="true">block</mat-icon>
+        {{ 'documents.rejectedBanner' | t: { reason: receipt.rejectedReason } }}
+      </p>
+    }
+    @if (receipt.status === 'CANCELLED') {
+      <p class="doc-banner doc-banner--warn" role="status">
+        <mat-icon aria-hidden="true">undo</mat-icon>
+        {{ 'documents.cancelledBanner' | t: { reason: receipt.cancelReason ?? '' } }}
+      </p>
+    }
+
+    <dl class="doc-facts">
+      <dt>{{ 'receipts.fields.warehouse' | t }}</dt>
+      <dd>{{ receipt.warehouseName }}</dd>
+      <dt>{{ 'receipts.fields.receiptDate' | t }}</dt>
+      <dd>{{ receipt.receiptDate | date }}</dd>
+      <dt>{{ 'receipts.fields.supplier' | t }}</dt>
+      <dd>{{ receipt.supplierName }}</dd>
+      <dt>{{ 'receipts.fields.referenceNo' | t }}</dt>
+      <dd class="mono">{{ receipt.referenceNo ?? '—' }}</dd>
+      @if (receipt.note) {
+        <dt>{{ 'common.note' | t }}</dt>
+        <dd>{{ receipt.note }}</dd>
+      }
+    </dl>
+
+    <div class="doc-table-wrap">
+      <table class="doc-table">
+        <caption class="visually-hidden">
+          {{
+            'documents.lines' | t
+          }}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">{{ 'documents.fields.product' | t }}</th>
+            @if (hasTracking()) {
+              <th scope="col">{{ 'lots.lotNumber' | t }}</th>
+              <th scope="col">{{ 'lots.expiryDate' | t }}</th>
+            }
+            <th scope="col" class="num">{{ 'common.quantity' | t }}</th>
+            <th scope="col" class="num">{{ 'receipts.fields.unitCost' | t }}</th>
+            <th scope="col" class="num">{{ 'documents.fields.amount' | t }}</th>
+            <th scope="col">{{ 'receipts.fields.location' | t }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (line of receipt.lines; track line.id; let index = $index) {
+            <tr [class.row--error]="workflow.lineErrors()[index]">
+              <td>{{ index + 1 }}</td>
+              <td>
+                <span class="mono">{{ line.sku }}</span> {{ line.productName }}
+                @if (line.serialNumbers?.length) {
+                  @let open = expanded().has(line.id);
+                  <div class="doc-chips">
+                    @for (
+                      serial of open
+                        ? line.serialNumbers
+                        : line.serialNumbers!.slice(0, serialPreview);
+                      track serial
+                    ) {
+                      <span>{{ serial }}</span>
+                    }
+                    @if (line.serialNumbers!.length > serialPreview) {
+                      <button mat-button type="button" (click)="toggleSerials(line.id)">
+                        {{
+                          open
+                            ? ('serials.showLess' | t)
+                            : ('serials.showAll' | t: { count: line.serialNumbers!.length })
+                        }}
+                      </button>
+                    }
+                  </div>
+                }
+                @for (message of workflow.lineErrors()[index]; track message) {
+                  <span class="doc-line-error" role="alert">{{ message }}</span>
+                }
+              </td>
+              @if (hasTracking()) {
+                <td class="mono">{{ line.lotNumber ?? '—' }}</td>
+                <td>
+                  <app-expiry-badge
+                    [date]="line.expiryDate"
+                    [showDays]="receipt.status === 'APPROVED'"
+                  />
+                </td>
+              }
+              <td class="num">{{ line.quantity | number }} {{ line.unit }}</td>
+              <td class="num">{{ line.unitCost | currency: 'VND' : 'symbol' : '1.0-0' }}</td>
+              <td class="num">{{ line.amount | currency: 'VND' : 'symbol' : '1.0-0' }}</td>
+              <td class="mono">{{ line.locationCode ?? '—' }}</td>
+            </tr>
+          }
+        </tbody>
+        <tfoot>
+          <tr>
+            <td [attr.colspan]="hasTracking() ? 4 : 2">{{ 'common.total' | t }}</td>
+            <td class="num">{{ receipt.totalQuantity | number }}</td>
+            <td></td>
+            <td class="num">{{ receipt.totalAmount | currency: 'VND' : 'symbol' : '1.0-0' }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </section>
+
+  <app-document-timeline [document]="receipt" />
+</div>

@@ -1,0 +1,205 @@
+<app-page-header [heading]="heading()" [subtitle]="'receipts.formSubtitle' | t" />
+
+<form [formGroup]="form" (ngSubmit)="save(false)" novalidate class="doc-form">
+  @if (receipt()?.status === 'REJECTED') {
+    <p class="doc-banner doc-banner--error" role="status">
+      <mat-icon aria-hidden="true">block</mat-icon>
+      {{ 'documents.rejectedBanner' | t: { reason: receipt()?.rejectedReason ?? '' } }}
+    </p>
+  }
+
+  <section class="doc-card doc-header-grid">
+    <mat-form-field>
+      <mat-label>{{ 'receipts.fields.warehouse' | t }}</mat-label>
+      <mat-select formControlName="warehouseId">
+        @for (warehouse of warehouses.active(); track warehouse.id) {
+          <mat-option [value]="warehouse.id"
+            >{{ warehouse.code }} — {{ warehouse.name }}</mat-option
+          >
+        }
+      </mat-select>
+      <mat-error>{{ form.controls.warehouseId | fieldError }}</mat-error>
+    </mat-form-field>
+    <mat-form-field>
+      <mat-label>{{ 'receipts.fields.supplierSelect' | t }}</mat-label>
+      <mat-select formControlName="supplierId">
+        <mat-option [value]="null">{{ 'receipts.fields.otherSource' | t }}</mat-option>
+        @for (supplier of partners.suppliers(); track supplier.id) {
+          <mat-option [value]="supplier.id">{{ supplier.code }} — {{ supplier.name }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field class="wide">
+      <mat-label>{{ 'receipts.fields.supplier' | t }}</mat-label>
+      <input matInput formControlName="supplierName" autocomplete="off" />
+      <mat-error>{{ form.controls.supplierName | fieldError }}</mat-error>
+    </mat-form-field>
+    <mat-form-field>
+      <mat-label>{{ 'receipts.fields.receiptDate' | t }}</mat-label>
+      <input matInput [matDatepicker]="receiptPicker" formControlName="receiptDate" />
+      <mat-hint>dd/MM/yyyy</mat-hint>
+      <mat-datepicker-toggle matIconSuffix [for]="receiptPicker" />
+      <mat-datepicker #receiptPicker />
+      <mat-error>{{ form.controls.receiptDate | fieldError }}</mat-error>
+    </mat-form-field>
+    <mat-form-field>
+      <mat-label>{{ 'receipts.fields.referenceNo' | t }}</mat-label>
+      <input matInput formControlName="referenceNo" autocomplete="off" />
+      <mat-hint>{{ 'receipts.fields.referenceHint' | t }}</mat-hint>
+      <mat-error>{{ form.controls.referenceNo | fieldError }}</mat-error>
+    </mat-form-field>
+    <mat-form-field class="wide">
+      <mat-label>{{ 'common.note' | t }}</mat-label>
+      <textarea matInput formControlName="note" rows="1"></textarea>
+      <mat-error>{{ form.controls.note | fieldError }}</mat-error>
+    </mat-form-field>
+  </section>
+
+  <section class="doc-card">
+    <header class="doc-lines-header">
+      <h2>{{ 'documents.lines' | t }}</h2>
+      <div class="doc-actions">
+        <mat-form-field subscriptSizing="dynamic" class="scan-field">
+          <mat-label>{{ 'documents.scanInput' | t }}</mat-label>
+          <input
+            matInput
+            [formControl]="scanInput"
+            (keydown.enter)="$event.preventDefault(); onScanInput()"
+            autocomplete="off"
+            enterkeyhint="done"
+          />
+          <button
+            mat-icon-button
+            matIconSuffix
+            type="button"
+            (click)="scanWithCamera()"
+            [disabled]="scanning()"
+            [attr.aria-label]="'scanner.title' | t"
+            [matTooltip]="'scanner.title' | t"
+          >
+            <mat-icon>photo_camera</mat-icon>
+          </button>
+        </mat-form-field>
+        <button
+          mat-stroked-button
+          type="button"
+          (click)="addLine()"
+          [matTooltip]="'documents.addLineShortcut' | t"
+        >
+          <mat-icon>add</mat-icon>{{ 'documents.addLine' | t }}
+        </button>
+      </div>
+    </header>
+
+    @if (lines.length === 0) {
+      <p class="doc-empty" [class.error]="lines.touched">{{ 'documents.noLines' | t }}</p>
+    }
+
+    <ol class="doc-lines" formArrayName="lines">
+      @for (line of lines.controls; track line; let index = $index) {
+        @let product = line.controls.product.value;
+        <li class="doc-line" [formGroupName]="index">
+          <span class="doc-line__no" aria-hidden="true">{{ index + 1 }}</span>
+          <app-product-autocomplete
+            class="line__product"
+            [control]="line.controls.product"
+            [label]="'documents.fields.product' | t"
+          />
+          <mat-form-field>
+            <mat-label>{{ 'common.quantity' | t }}</mat-label>
+            <input matInput type="number" inputmode="numeric" min="1" formControlName="quantity" />
+            @if (product?.unit) {
+              <span matTextSuffix>{{ product?.unit }}</span>
+            }
+            <mat-error>{{ line.controls.quantity | fieldError }}</mat-error>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>{{ 'receipts.fields.unitCost' | t }}</mat-label>
+            <input matInput type="number" inputmode="numeric" min="0" formControlName="unitCost" />
+            <span matTextSuffix>₫</span>
+            <mat-error>{{ line.controls.unitCost | fieldError }}</mat-error>
+          </mat-form-field>
+          <div class="doc-line__stat">
+            <span class="label">{{ 'documents.fields.amount' | t }}</span>
+            <span class="value">{{ amount(line) | currency: 'VND' : 'symbol' : '1.0-0' }}</span>
+          </div>
+          <button
+            mat-icon-button
+            type="button"
+            class="doc-line__remove"
+            (click)="removeLine(index)"
+            [attr.aria-label]="'documents.removeLine' | t"
+            [matTooltip]="'documents.removeLine' | t"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+
+          @if (product && (product.trackLot || product.trackExpiry || product.trackSerial)) {
+            <div class="doc-line__extra">
+              @if (product.trackLot) {
+                <mat-form-field>
+                  <mat-label>{{ 'lots.lotNumber' | t }}</mat-label>
+                  <input matInput formControlName="lotNumber" autocomplete="off" />
+                  <mat-error>{{ line.controls.lotNumber | fieldError }}</mat-error>
+                </mat-form-field>
+              }
+              @if (product.trackExpiry) {
+                <mat-form-field>
+                  <mat-label>{{ 'lots.expiryDate' | t }}</mat-label>
+                  <input matInput [matDatepicker]="expiryPicker" formControlName="expiryDate" />
+                  <mat-datepicker-toggle matIconSuffix [for]="expiryPicker" />
+                  <mat-datepicker #expiryPicker />
+                  <mat-error>{{ line.controls.expiryDate | fieldError }}</mat-error>
+                </mat-form-field>
+              }
+              @if (product.trackSerial) {
+                <div class="serials">
+                  <button mat-stroked-button type="button" (click)="editSerials(line)">
+                    <mat-icon>qr_code_2</mat-icon>
+                    {{
+                      'serials.entered'
+                        | t
+                          : {
+                              count: line.controls.serialNumbers.value.length,
+                              quantity: line.controls.quantity.value,
+                            }
+                    }}
+                  </button>
+                  @if (line.controls.serialNumbers.invalid && line.touched) {
+                    <span class="doc-line-error" role="alert">{{
+                      line.controls.serialNumbers | fieldError
+                    }}</span>
+                  }
+                </div>
+              }
+            </div>
+          }
+        </li>
+      }
+    </ol>
+
+    <div class="totals" aria-live="polite">
+      <span>{{ 'documents.fields.totalQuantity' | t }}: {{ totals().quantity }}</span>
+      <span
+        >{{ 'receipts.fields.totalAmount' | t }}:
+        {{ totals().amount | currency: 'VND' : 'symbol' : '1.0-0' }}</span
+      >
+    </div>
+  </section>
+
+  <div class="doc-form-actions">
+    <a
+      mat-button
+      [routerLink]="receipt() ? ['/goods-receipts', receipt()!.id] : ['/goods-receipts']"
+      >{{ 'common.cancel' | t }}</a
+    >
+    <button mat-stroked-button type="submit" [disabled]="saving()">
+      <mat-icon>save</mat-icon>
+      {{ (saving() ? 'common.saving' : 'documents.saveDraft') | t }}
+    </button>
+    <button mat-flat-button type="button" [disabled]="saving()" (click)="save(true)">
+      <mat-icon>send</mat-icon>
+      {{ 'documents.saveAndSubmit' | t }}
+    </button>
+  </div>
+</form>

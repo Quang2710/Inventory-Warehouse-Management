@@ -1,0 +1,90 @@
+<app-page-header [heading]="'receipts.title' | t" [subtitle]="'receipts.subtitle' | t">
+  <div actions class="doc-actions">
+    <app-export-menu
+      [busy]="exporting()"
+      [disabled]="list.total() === 0"
+      (export)="export($event)"
+    />
+    <a *hasPermission="'goods-receipt:write'" mat-flat-button routerLink="/goods-receipts/new">
+      <mat-icon>add</mat-icon>
+      {{ 'receipts.create' | t }}
+    </a>
+  </div>
+</app-page-header>
+
+<app-data-table
+  tableId="goods-receipts"
+  [columns]="columns"
+  [rows]="list.items()"
+  [total]="list.total()"
+  [pageIndex]="list.pageIndex()"
+  [pageSize]="list.params().size"
+  [sort]="list.params().sort"
+  [loading]="list.loading()"
+  [loaded]="list.loaded()"
+  [error]="list.error()"
+  [filtered]="list.hasFilters()"
+  [clickable]="true"
+  [ariaLabel]="'receipts.title' | t"
+  emptyIcon="move_to_inbox"
+  (page)="list.setPage($event.pageIndex, $event.pageSize)"
+  (sortChange)="list.setSort($event)"
+  (rowClick)="open($event)"
+  (retry)="list.reload()"
+>
+  <ng-container filters>
+    <app-search-field
+      [value]="list.params().q"
+      [placeholder]="'receipts.searchPlaceholder' | t"
+      (queryChange)="list.setQuery($event)"
+    />
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>{{ 'common.status' | t }}</mat-label>
+      <mat-select
+        [value]="list.params().filters.status"
+        (valueChange)="list.setFilter('status', $event)"
+      >
+        <mat-option [value]="null">{{ 'common.all' | t }}</mat-option>
+        @for (status of statusOptions; track status) {
+          <mat-option [value]="status">{{ statusLabels[status].labelKey | t }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>{{ 'receipts.fields.warehouse' | t }}</mat-label>
+      <mat-select
+        [value]="list.params().filters.warehouseId"
+        (valueChange)="list.setFilter('warehouseId', $event)"
+      >
+        <mat-option [value]="null">{{ 'common.all' | t }}</mat-option>
+        @for (warehouse of warehouses.items(); track warehouse.id) {
+          <mat-option [value]="warehouse.id">{{ warehouse.name }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <app-date-range-field
+      [from]="list.params().filters.from"
+      [to]="list.params().filters.to"
+      (rangeChange)="setRange($event)"
+    />
+  </ng-container>
+
+  <ng-template appCell="code" [appCellOf]="list.items()" let-row
+    ><span class="mono">{{ row.code }}</span></ng-template
+  >
+  <ng-template appCell="receiptDate" [appCellOf]="list.items()" let-row>{{
+    row.receiptDate | date
+  }}</ng-template>
+  <ng-template appCell="totalQuantity" [appCellOf]="list.items()" let-row>{{
+    row.totalQuantity | number
+  }}</ng-template>
+  <ng-template appCell="totalAmount" [appCellOf]="list.items()" let-row>{{
+    row.totalAmount | currency: 'VND' : 'symbol' : '1.0-0'
+  }}</ng-template>
+  <ng-template appCell="createdBy" [appCellOf]="list.items()" let-row>{{
+    row.createdBy.fullName
+  }}</ng-template>
+  <ng-template appCell="status" [appCellOf]="list.items()" let-row
+    ><app-status-chip [status]="statusLabels[row.status]"
+  /></ng-template>
+</app-data-table>
