@@ -96,7 +96,7 @@
   }
 
   <section class="controls">
-    <form class="scan" (ngSubmit)="onScan()">
+    <form class="scan" (submit)="$event.preventDefault(); onScan()">
       <mat-form-field class="scan__field" subscriptSizing="dynamic">
         <mat-icon matPrefix aria-hidden="true">barcode_reader</mat-icon>
         <mat-label>{{ 'stocktakes.count.scanLabel' | t }}</mat-label>

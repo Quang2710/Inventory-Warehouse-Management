@@ -1,0 +1,146 @@
+@let stocktake = current();
+<app-page-header
+  [heading]="stocktake.code + ' — ' + stocktake.name"
+  [subtitle]="stocktake.warehouseName + ' · ' + stocktake.scopeLabel"
+>
+  <div actions class="doc-actions">
+    <app-status-chip [status]="statusLabels[stocktake.status]" />
+    @if (canCount()) {
+      <a mat-stroked-button [routerLink]="['/stocktakes', stocktake.id, 'count']">
+        <mat-icon>barcode_scanner</mat-icon>{{ 'stocktakes.actions.count' | t }}
+      </a>
+      <button mat-flat-button type="button" [disabled]="busy()" (click)="submit()">
+        <mat-icon>send</mat-icon>{{ 'stocktakes.actions.submit' | t }}
+      </button>
+    }
+    @if (canDecide()) {
+      <button mat-stroked-button type="button" [disabled]="busy()" (click)="reopen()">
+        <mat-icon>undo</mat-icon>{{ 'stocktakes.actions.reopen' | t }}
+      </button>
+      <button mat-flat-button type="button" [disabled]="busy()" (click)="approve()">
+        <mat-icon>task_alt</mat-icon>{{ 'stocktakes.actions.approve' | t }}
+      </button>
+    }
+    @if (canCancel()) {
+      <button mat-button type="button" class="doc-danger" [disabled]="busy()" (click)="cancel()">
+        <mat-icon>cancel</mat-icon>{{ 'stocktakes.actions.cancel' | t }}
+      </button>
+    }
+  </div>
+</app-page-header>
+
+<div class="doc-kpis">
+  <div class="doc-kpi">
+    <span class="label">{{ 'stocktakes.fields.progress' | t }}</span>
+    <span class="value"
+      >{{ stocktake.countedLineCount | number }} / {{ stocktake.lineCount | number }}</span
+    >
+  </div>
+  <div class="doc-kpi">
+    <span class="label">{{ 'stocktakes.fields.varianceLines' | t }}</span>
+    <span class="value">{{ stocktake.varianceLineCount | number }}</span>
+  </div>
+  <div class="doc-kpi">
+    <span class="label">{{ 'stocktakes.review.variance' | t }}</span>
+    <span class="value">{{ stocktake.varianceQuantity | number }}</span>
+  </div>
+  <div class="doc-kpi">
+    <span class="label">{{ 'stocktakes.fields.varianceValue' | t }}</span>
+    <span class="value" [class.doc-danger]="stocktake.varianceValue < 0">{{
+      stocktake.varianceValue | currency: 'VND' : 'symbol' : '1.0-0'
+    }}</span>
+  </div>
+</div>
+
+<section class="doc-card">
+  <header class="doc-lines-header">
+    <h2>{{ 'stocktakes.review.linesTitle' | t }}</h2>
+    <mat-button-toggle-group
+      [value]="filter()"
+      (change)="filter.set($event.value)"
+      [attr.aria-label]="'common.filters' | t"
+    >
+      <mat-button-toggle value="variance">{{
+        'stocktakes.review.filterVariance' | t
+      }}</mat-button-toggle>
+      <mat-button-toggle value="counted">{{
+        'stocktakes.review.filterCounted' | t
+      }}</mat-button-toggle>
+      <mat-button-toggle value="uncounted">{{
+        'stocktakes.review.filterUncounted' | t
+      }}</mat-button-toggle>
+      <mat-button-toggle value="all">{{ 'stocktakes.review.filterAll' | t }}</mat-button-toggle>
+    </mat-button-toggle-group>
+  </header>
+  @if (stocktake.blind && stocktake.status === 'IN_PROGRESS') {
+    <p class="doc-banner doc-banner--info">
+      <mat-icon aria-hidden="true">visibility_off</mat-icon>{{ 'stocktakes.fields.blindHint' | t }}
+    </p>
+  }
+
+  @if (lines() === null) {
+    <app-skeleton [rows]="8" />
+  } @else {
+    <div class="doc-table-wrap">
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th scope="col">{{ 'stocktakes.review.location' | t }}</th>
+            <th scope="col">{{ 'documents.fields.product' | t }}</th>
+            <th scope="col" class="num">{{ 'stocktakes.review.expected' | t }}</th>
+            <th scope="col" class="num">{{ 'stocktakes.review.counted' | t }}</th>
+            <th scope="col" class="num">{{ 'stocktakes.review.variance' | t }}</th>
+            <th scope="col">{{ 'stocktakes.review.countedBy' | t }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (line of visibleLines(); track line.id) {
+            <tr>
+              <td class="mono">{{ line.locationCode }}</td>
+              <td>
+                <span class="mono">{{ line.sku }}</span> {{ line.productName }}
+                @if (line.unexpected) {
+                  <span class="doc-chips"
+                    ><span>{{ 'stocktakes.review.unexpected' | t }}</span></span
+                  >
+                }
+                @if (line.stockChanged) {
+                  <span class="doc-line-error">{{ 'stocktakes.review.stockChanged' | t }}</span>
+                }
+              </td>
+              <td class="num">
+                {{
+                  line.expectedQuantity === null || line.expectedQuantity === undefined
+                    ? ('stocktakes.review.hiddenExpected' | t)
+                    : (line.expectedQuantity | number)
+                }}
+              </td>
+              <td class="num">
+                {{
+                  line.countedQuantity === null || line.countedQuantity === undefined
+                    ? ('stocktakes.review.notCounted' | t)
+                    : (line.countedQuantity | number)
+                }}
+              </td>
+              <td class="num" [class.doc-danger]="(line.variance ?? 0) < 0">
+                {{
+                  line.variance ? (line.variance > 0 ? '+' : '') + (line.variance | number) : '—'
+                }}
+              </td>
+              <td>
+                {{ line.countedBy?.fullName ?? '—' }}
+                @if (line.countedAt) {
+                  <span class="doc-muted"> · {{ line.countedAt | date: 'dd/MM HH:mm' }}</span>
+                }
+              </td>
+            </tr>
+          } @empty {
+            <tr>
+              <td colspan="6" class="doc-muted">{{ 'stocktakes.count.noLines' | t }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>

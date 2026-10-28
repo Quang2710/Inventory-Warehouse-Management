@@ -13,7 +13,6 @@ import {
 } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
-import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -29,6 +28,7 @@ import { I18nService } from '../../../core/i18n/i18n.service';
 import { STOCKTAKE_STATUS } from '../../../core/i18n/labels';
 import { TranslatePipe } from '../../../core/i18n/translate.pipe';
 import { ProductsApi } from '../../../shared/data-access/products.api';
+import { BarcodeScannerService } from '../../../shared/ui/barcode-scanner/barcode-scanner.service';
 import { Skeleton } from '../../../shared/ui/skeleton/skeleton';
 import { StatePanel } from '../../../shared/ui/state-panel/state-panel';
 import { StatusChip } from '../../../shared/ui/status-chip/status-chip';
@@ -77,7 +77,7 @@ function normalize(value: string | undefined | null): string {
   styleUrl: './stocktake-count-page.scss',
 })
 export class StocktakeCountPage {
-  private readonly dialog = inject(MatDialog);
+  private readonly scanner = inject(BarcodeScannerService);
   private readonly products = inject(ProductsApi);
   protected readonly i18n = inject(I18nService);
   protected readonly store = inject(CountSessionStore);
@@ -203,15 +203,7 @@ export class StocktakeCountPage {
   }
 
   protected async openCamera(): Promise<void> {
-    const { BarcodeScannerDialog } = await import('../components/barcode-scanner-dialog');
-    const ref = this.dialog.open<InstanceType<typeof BarcodeScannerDialog>, unknown, string>(
-      BarcodeScannerDialog,
-      {
-        width: '520px',
-        maxWidth: 'calc(100vw - 16px)',
-      },
-    );
-    const code = await firstValueFrom(ref.afterClosed());
+    const code = await this.scanner.scan();
     if (code) {
       this.notice.set(null);
       await this.handleCode(normalize(code));
