@@ -1,0 +1,155 @@
+<app-page-header [heading]="'reports.abc.title' | t" [subtitle]="'reports.abc.subtitle' | t">
+  <div actions class="doc-actions">
+    <app-export-menu
+      [busy]="exporting()"
+      [disabled]="list.total() === 0"
+      (export)="export($event)"
+    />
+  </div>
+</app-page-header>
+
+<section class="doc-card doc-filters" [attr.aria-label]="'common.filters' | t">
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>{{ 'reports.abc.basis' | t }}</mat-label>
+    <mat-select [value]="basis()" (valueChange)="list.setFilter('basis', $event)">
+      <mat-option value="ISSUE_VALUE">{{ 'reports.abc.basisIssue' | t }}</mat-option>
+      <mat-option value="STOCK_VALUE">{{ 'reports.abc.basisStock' | t }}</mat-option>
+    </mat-select>
+  </mat-form-field>
+  @if (basis() === 'ISSUE_VALUE') {
+    <app-date-range-field
+      [from]="list.params().filters.from"
+      [to]="list.params().filters.to"
+      (rangeChange)="setRange($event)"
+    />
+  }
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>{{ 'stock.fields.warehouse' | t }}</mat-label>
+    <mat-select
+      [value]="list.params().filters.warehouseId"
+      (valueChange)="list.setFilter('warehouseId', $event)"
+    >
+      <mat-option [value]="null">{{ 'reports.allWarehouses' | t }}</mat-option>
+      @for (warehouse of warehouses.items(); track warehouse.id) {
+        <mat-option [value]="warehouse.id">{{ warehouse.name }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>{{ 'reports.abc.thresholdA' | t }}</mat-label>
+    <mat-select
+      [value]="list.params().filters.thresholdA ?? '80'"
+      (valueChange)="setThresholdA($event)"
+    >
+      @for (value of thresholdAOptions; track value) {
+        <mat-option [value]="'' + value">{{ value }}%</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>{{ 'reports.abc.thresholdB' | t }}</mat-label>
+    <mat-select
+      [value]="list.params().filters.thresholdB ?? '95'"
+      (valueChange)="list.setFilter('thresholdB', $event)"
+    >
+      @for (value of thresholdBOptions; track value) {
+        <mat-option
+          [value]="'' + value"
+          [disabled]="value <= +(list.params().filters.thresholdA ?? 80)"
+          >{{ value }}%</mat-option
+        >
+      }
+    </mat-select>
+  </mat-form-field>
+</section>
+
+@if (summary(); as summary) {
+  <div class="doc-kpis" style="margin-top: 16px">
+    @for (item of summary.classes; track item.abcClass; let index = $index) {
+      <div class="doc-kpi class-tile" [style.--tile-color]="colors().series[index]">
+        <span class="label">{{ classLabels[item.abcClass].labelKey | t }}</span>
+        <span class="value">{{ item.valueShare | number: '1.0-1' }}%</span>
+        <span class="doc-muted">{{
+          'reports.abc.tileDetail'
+            | t: { count: item.productCount, share: (item.productShare | number: '1.0-1') }
+        }}</span>
+      </div>
+    }
+    <div class="doc-kpi">
+      <span class="label">{{ 'reports.abc.totalValue' | t }}</span>
+      <span class="value">{{ summary.totalValue | currency: 'VND' : 'symbol' : '1.0-0' }}</span>
+    </div>
+  </div>
+
+  @if (chart(); as options) {
+    <section class="doc-card" style="margin-bottom: 16px">
+      <h2>{{ 'reports.abc.pareto' | t }}</h2>
+      <div
+        class="chart"
+        echarts
+        [options]="options"
+        [autoResize]="true"
+        role="img"
+        [attr.aria-label]="'reports.abc.paretoAria' | t"
+      ></div>
+    </section>
+  }
+}
+
+<app-data-table
+  tableId="report-abc"
+  [columns]="columns"
+  [rows]="list.items()"
+  [total]="list.total()"
+  [pageIndex]="list.pageIndex()"
+  [pageSize]="list.params().size"
+  [sort]="list.params().sort"
+  [loading]="list.loading()"
+  [loaded]="list.loaded()"
+  [error]="list.error()"
+  [filtered]="list.hasFilters()"
+  [ariaLabel]="'reports.abc.title' | t"
+  emptyIcon="leaderboard"
+  (page)="list.setPage($event.pageIndex, $event.pageSize)"
+  (sortChange)="list.setSort($event)"
+  (retry)="list.reload()"
+>
+  <ng-container filters>
+    <app-search-field
+      [value]="list.params().q"
+      [placeholder]="'stock.searchPlaceholder' | t"
+      (queryChange)="list.setQuery($event)"
+    />
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>{{ 'reports.abc.class' | t }}</mat-label>
+      <mat-select
+        [value]="list.params().filters.abcClass"
+        (valueChange)="list.setFilter('abcClass', $event)"
+      >
+        <mat-option [value]="null">{{ 'common.all' | t }}</mat-option>
+        @for (abcClass of classes; track abcClass) {
+          <mat-option [value]="abcClass">{{ classLabels[abcClass].labelKey | t }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  </ng-container>
+
+  <ng-template appCell="abcClass" [appCellOf]="list.items()" let-row
+    ><app-status-chip [status]="classLabels[row.abcClass]"
+  /></ng-template>
+  <ng-template appCell="sku" [appCellOf]="list.items()" let-row
+    ><span class="mono">{{ row.sku }}</span></ng-template
+  >
+  <ng-template appCell="quantity" [appCellOf]="list.items()" let-row>{{
+    row.quantity | number
+  }}</ng-template>
+  <ng-template appCell="value" [appCellOf]="list.items()" let-row>{{
+    row.value | currency: 'VND' : 'symbol' : '1.0-0'
+  }}</ng-template>
+  <ng-template appCell="share" [appCellOf]="list.items()" let-row
+    >{{ row.share | number: '1.0-2' }}%</ng-template
+  >
+  <ng-template appCell="cumulativeShare" [appCellOf]="list.items()" let-row
+    >{{ row.cumulativeShare | number: '1.0-1' }}%</ng-template
+  >
+</app-data-table>

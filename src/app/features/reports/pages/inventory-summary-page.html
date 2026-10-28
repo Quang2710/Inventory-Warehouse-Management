@@ -1,0 +1,107 @@
+<app-page-header [heading]="'reports.nxt.title' | t" [subtitle]="'reports.nxt.subtitle' | t">
+  <div actions class="doc-actions">
+    <app-export-menu
+      [busy]="exporting()"
+      [disabled]="list.total() === 0"
+      (export)="export($event)"
+    />
+  </div>
+</app-page-header>
+
+@if (totals(); as totals) {
+  <div class="doc-kpis" aria-live="polite">
+    <div class="doc-kpi">
+      <span class="label">{{ 'reports.nxt.openingValue' | t }}</span>
+      <span class="value">{{ totals.openingValue | currency: 'VND' : 'symbol' : '1.0-0' }}</span>
+    </div>
+    <div class="doc-kpi">
+      <span class="label">{{ 'reports.nxt.inboundValue' | t }}</span>
+      <span class="value">{{ totals.inboundValue | currency: 'VND' : 'symbol' : '1.0-0' }}</span>
+    </div>
+    <div class="doc-kpi">
+      <span class="label">{{ 'reports.nxt.outboundValue' | t }}</span>
+      <span class="value">{{ totals.outboundValue | currency: 'VND' : 'symbol' : '1.0-0' }}</span>
+    </div>
+    <div class="doc-kpi">
+      <span class="label">{{ 'reports.nxt.closingValue' | t }}</span>
+      <span class="value">{{ totals.closingValue | currency: 'VND' : 'symbol' : '1.0-0' }}</span>
+    </div>
+  </div>
+}
+
+<app-data-table
+  tableId="report-nxt"
+  [columns]="columns"
+  [rows]="list.items()"
+  [total]="list.total()"
+  [pageIndex]="list.pageIndex()"
+  [pageSize]="list.params().size"
+  [sort]="list.params().sort"
+  [loading]="list.loading()"
+  [loaded]="list.loaded()"
+  [error]="list.error()"
+  [filtered]="list.hasFilters()"
+  [ariaLabel]="'reports.nxt.title' | t"
+  emptyIcon="table_chart"
+  (page)="list.setPage($event.pageIndex, $event.pageSize)"
+  (sortChange)="list.setSort($event)"
+  (retry)="list.reload()"
+>
+  <ng-container filters>
+    <app-search-field
+      [value]="list.params().q"
+      [placeholder]="'stock.searchPlaceholder' | t"
+      (queryChange)="list.setQuery($event)"
+    />
+    <app-date-range-field
+      [from]="list.params().filters.from"
+      [to]="list.params().filters.to"
+      (rangeChange)="setRange($event)"
+    />
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>{{ 'stock.fields.warehouse' | t }}</mat-label>
+      <mat-select
+        [value]="list.params().filters.warehouseId"
+        (valueChange)="list.setFilter('warehouseId', $event)"
+      >
+        <mat-option [value]="null">{{ 'reports.allWarehouses' | t }}</mat-option>
+        @for (warehouse of warehouses.items(); track warehouse.id) {
+          <mat-option [value]="warehouse.id">{{ warehouse.name }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>{{ 'stock.fields.category' | t }}</mat-label>
+      <mat-select
+        [value]="list.params().filters.categoryId"
+        (valueChange)="list.setFilter('categoryId', $event)"
+      >
+        <mat-option [value]="null">{{ 'common.all' | t }}</mat-option>
+        @for (category of categories.items(); track category.id) {
+          <mat-option [value]="category.id"
+            >{{ category.depth ? '— ' : '' }}{{ category.name }}</mat-option
+          >
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-slide-toggle
+      [checked]="list.params().filters.onlyActive !== 'false'"
+      (change)="list.setFilter('onlyActive', $event.checked ? null : 'false')"
+      >{{ 'reports.nxt.onlyActive' | t }}</mat-slide-toggle
+    >
+  </ng-container>
+
+  <ng-template appCell="sku" [appCellOf]="list.items()" let-row
+    ><span class="mono">{{ row.sku }}</span></ng-template
+  >
+  @for (key of quantityColumns; track key) {
+    <ng-template [appCell]="key" [appCellOf]="list.items()" let-row>{{
+      row[key] | number
+    }}</ng-template>
+  }
+  @for (key of valueColumns; track key) {
+    <ng-template [appCell]="key" [appCellOf]="list.items()" let-row>{{
+      row[key] | currency: 'VND' : 'symbol' : '1.0-0'
+    }}</ng-template>
+  }
+</app-data-table>
