@@ -6,12 +6,15 @@ import {
   DEFAULT_CURRENCY_CODE,
   LOCALE_ID,
   inject,
+  isDevMode,
   provideAppInitializer,
   provideBrowserGlobalErrorListeners,
 } from '@angular/core';
 import { MAT_FORM_FIELD_DEFAULT_OPTIONS } from '@angular/material/form-field';
 import { MatIconRegistry } from '@angular/material/icon';
+import { MatPaginatorIntl } from '@angular/material/paginator';
 import { MAT_SNACK_BAR_DEFAULT_OPTIONS } from '@angular/material/snack-bar';
+import { provideServiceWorker } from '@angular/service-worker';
 import {
   TitleStrategy,
   provideRouter,
@@ -22,11 +25,15 @@ import {
 import { routes } from './app.routes';
 import { AuthStore } from './core/auth/auth.store';
 import { AppTitleStrategy } from './core/i18n/app-title.strategy';
+import { provideVnDateAdapter } from './core/i18n/date-adapter';
+import { AppPaginatorIntl } from './core/i18n/paginator-intl';
 import { I18nService } from './core/i18n/i18n.service';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { errorInterceptor } from './core/interceptors/error.interceptor';
 import { loadingInterceptor } from './core/interceptors/loading.interceptor';
+import { PwaService } from './core/pwa/pwa.service';
 import { ThemeService } from './core/theme/theme.service';
+import { environment } from '../environments/environment';
 
 registerLocaleData(localeVi);
 
@@ -51,6 +58,13 @@ export const appConfig: ApplicationConfig = {
       useValue: { dateFormat: 'dd/MM/yyyy', timezone: '+0700' },
     },
 
+    provideVnDateAdapter(),
+    { provide: MatPaginatorIntl, useClass: AppPaginatorIntl },
+    // PWA: bản build thật dùng ngsw-worker.js; bản demo dùng app-sw.js (MSW + ngsw, xem public/).
+    provideServiceWorker(environment.serviceWorker.script, {
+      enabled: environment.serviceWorker.enabled && !isDevMode(),
+      registrationStrategy: 'registerWhenStable:30000',
+    }),
     {
       provide: MAT_FORM_FIELD_DEFAULT_OPTIONS,
       useValue: { appearance: 'outline', subscriptSizing: 'dynamic' },
@@ -63,6 +77,7 @@ export const appConfig: ApplicationConfig = {
     provideAppInitializer(() => {
       inject(MatIconRegistry).setDefaultFontSetClass('material-symbols-outlined');
       inject(ThemeService); // áp dụng theme đã lưu trước khi render
+      inject(PwaService).init();
       const i18n = inject(I18nService);
       const auth = inject(AuthStore);
       return i18n.init().then(() => auth.restoreSession());

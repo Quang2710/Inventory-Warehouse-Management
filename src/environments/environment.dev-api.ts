@@ -6,4 +6,5 @@ export const environment: AppEnvironment = {
   apiUrl: '/api',
   useMock: false,
   defaultLanguage: 'vi',
+  serviceWorker: { enabled: false, script: 'ngsw-worker.js' },
 };

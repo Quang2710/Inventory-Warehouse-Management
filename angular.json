@@ -36,7 +36,12 @@
             "define": {
               "MOCK_BACKEND_BUNDLED": "false"
             },
-            "allowedCommonJsDependencies": ["@mswjs/data", "@mswjs/data/lib/glossary"]
+            "allowedCommonJsDependencies": [
+              "@mswjs/data",
+              "@mswjs/data/lib/glossary",
+              "pdfmake/build/pdfmake",
+              "pdfmake/build/vfs_fonts"
+            ]
           },
           "configurations": {
             "production": {
@@ -44,9 +49,10 @@
                 {
                   "glob": "**/*",
                   "input": "public",
-                  "ignore": ["mockServiceWorker.js"]
+                  "ignore": ["mockServiceWorker.js", "app-sw.js"]
                 }
               ],
+              "serviceWorker": "ngsw-config.json",
               "budgets": [
                 {
                   "type": "initial",

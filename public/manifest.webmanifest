@@ -1,0 +1,37 @@
+{
+  "name": "Quản lý Kho — Tồn kho & kho hàng",
+  "short_name": "Quản lý Kho",
+  "description": "Nhập, xuất, chuyển kho, kiểm kê, quét mã và báo cáo tồn kho cho doanh nghiệp vừa và nhỏ",
+  "lang": "vi",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "id": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0b57d0",
+  "background_color": "#ffffff",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Quét mã",
+      "url": "./scan",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Kiểm kê",
+      "url": "./stocktakes",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Cảnh báo tồn kho",
+      "url": "./alerts",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}
