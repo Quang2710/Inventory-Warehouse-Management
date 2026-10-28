@@ -1,0 +1,175 @@
+<app-page-header [heading]="'scan.title' | t" [subtitle]="'scan.subtitle' | t" />
+
+<div class="layout">
+  <section class="doc-card doc-stack">
+    @if (cameraOn()) {
+      <app-camera-scanner [active]="!busy()" (detected)="lookupCode($event)" />
+    }
+    <button mat-stroked-button type="button" (click)="cameraOn.set(!cameraOn())">
+      <mat-icon>{{ cameraOn() ? 'videocam_off' : 'photo_camera' }}</mat-icon>
+      {{ (cameraOn() ? 'scan.cameraOff' : 'scan.cameraOn') | t }}
+    </button>
+    <form class="manual" (submit)="$event.preventDefault(); submitManual()">
+      <mat-form-field subscriptSizing="dynamic">
+        <mat-label>{{ 'scan.manual' | t }}</mat-label>
+        <input
+          matInput
+          [formControl]="manual"
+          autocomplete="off"
+          enterkeyhint="search"
+          inputmode="search"
+        />
+        <mat-hint>{{ 'scan.manualHint' | t }}</mat-hint>
+      </mat-form-field>
+      <button mat-flat-button type="submit" [disabled]="!manual.value.trim()">
+        {{ 'common.search' | t }}
+      </button>
+    </form>
+    @if (history().length > 1) {
+      <div>
+        <span class="doc-muted">{{ 'scan.history' | t }}</span>
+        <ul class="history">
+          @for (code of history(); track code) {
+            <li>
+              <button mat-stroked-button type="button" class="mono" (click)="lookupCode(code)">
+                {{ code }}
+              </button>
+            </li>
+          }
+        </ul>
+      </div>
+    }
+  </section>
+
+  <section class="doc-card" aria-live="polite">
+    @if (busy()) {
+      <mat-progress-bar mode="indeterminate" />
+    }
+    @if (result(); as result) {
+      @if (result.match; as match) {
+        <span class="mono doc-muted"
+          >{{ match.product.sku }} · {{ match.product.barcode ?? '—' }}</span
+        >
+        <h2 class="product-name">{{ match.product.name }}</h2>
+        <div class="flags">
+          @if (match.product.trackLot) {
+            <span class="doc-chips"
+              ><span>{{ 'scan.flags.lot' | t }}</span></span
+            >
+          }
+          @if (match.product.trackExpiry) {
+            <span class="doc-chips"
+              ><span>{{ 'scan.flags.expiry' | t }}</span></span
+            >
+          }
+          @if (match.product.trackSerial) {
+            <span class="doc-chips"
+              ><span>{{ 'scan.flags.serial' | t }}</span></span
+            >
+          }
+        </div>
+
+        @if (match.serial; as serial) {
+          <p class="doc-banner doc-banner--info">
+            <mat-icon aria-hidden="true">qr_code_2</mat-icon>
+            <span>
+              {{ 'serials.serialNumber' | t }}
+              <strong class="mono">{{ serial.serialNumber }}</strong> ·
+              <app-status-chip [status]="serialLabels[serial.status]" />
+              @if (serial.warehouseName) {
+                · {{ serial.warehouseName }} {{ serial.locationCode ?? '' }}
+              }
+              @if (documentLink(match); as link) {
+                · <a class="mono" [routerLink]="link">{{ serial.lastDocumentCode }}</a>
+              }
+            </span>
+          </p>
+        }
+
+        @if (can.stock) {
+          <h3>
+            {{
+              'scan.stockByWarehouse'
+                | t: { total: (totalStock() | number) ?? '0', unit: match.product.unit }
+            }}
+          </h3>
+          <table class="doc-table">
+            <tbody>
+              @for (item of result.stock; track item.id) {
+                <tr>
+                  <td>{{ item.warehouseName }}</td>
+                  <td class="num">
+                    <strong>{{ item.quantity | number }}</strong> {{ item.unit }}
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td class="doc-muted">{{ 'scan.noStock' | t }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+
+        @if (result.lots.length) {
+          <h3>{{ 'scan.lotsFefo' | t }}</h3>
+          <table class="doc-table">
+            <tbody>
+              @for (lot of result.lots; track lot.id) {
+                <tr>
+                  <td class="mono">{{ lot.lotNumber ?? '—' }}</td>
+                  <td><app-expiry-badge [date]="lot.expiryDate" /></td>
+                  <td>
+                    {{ lot.warehouseName }} <span class="mono">{{ lot.locationCode ?? '' }}</span>
+                  </td>
+                  <td class="num">{{ lot.quantity | number }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+
+        <div class="quick">
+          @if (can.receive) {
+            <a
+              mat-flat-button
+              [routerLink]="['/goods-receipts/new']"
+              [queryParams]="{ productId: match.product.id }"
+            >
+              <mat-icon>move_to_inbox</mat-icon>{{ 'scan.actions.receive' | t }}
+            </a>
+          }
+          @if (can.issue) {
+            <a
+              mat-flat-button
+              [routerLink]="['/goods-issues/new']"
+              [queryParams]="{ productId: match.product.id }"
+            >
+              <mat-icon>outbox</mat-icon>{{ 'scan.actions.issue' | t }}
+            </a>
+          }
+          @if (can.card) {
+            <a
+              mat-stroked-button
+              [routerLink]="['/stock-movements']"
+              [queryParams]="{ productId: match.product.id }"
+            >
+              <mat-icon>swap_vert</mat-icon>{{ 'scan.actions.card' | t }}
+            </a>
+          }
+        </div>
+        <p class="doc-muted">
+          {{ 'scan.scannedAt' | t: { code: result.code } }} ·
+          {{ matchedByLabels[match.matchedBy] | t }}
+        </p>
+      } @else {
+        <p class="not-found" role="alert">
+          <mat-icon aria-hidden="true">search_off</mat-icon
+          >{{ 'scan.notFound' | t: { code: result.code } }}
+        </p>
+      }
+    } @else if (!busy()) {
+      <p class="doc-muted">{{ 'scan.empty' | t }}</p>
+    }
+  </section>
+</div>
