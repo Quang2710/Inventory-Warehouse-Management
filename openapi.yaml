@@ -18,6 +18,10 @@ info:
       (vi phạm → `403 FORBIDDEN`).
     - Tồn kho chỉ thay đổi qua chứng từ đã duyệt (sinh `StockMovement`). Không cho phép tồn âm.
       Chứng từ đã duyệt không được sửa/xóa, chỉ hủy (hệ thống sinh bút toán đảo).
+    - Lô / hạn sử dụng / serial: sản phẩm `trackLot` / `trackExpiry` được theo dõi tồn theo từng lô
+      (sản phẩm × ô × lô); sản phẩm `trackSerial` theo dõi từng đơn vị. Xuất kho, chuyển kho tự
+      phân bổ theo **FEFO** (hết hạn trước xuất trước, cùng hạn thì lô nhập trước), không xuất lô đã
+      hết hạn (trừ lý do `DAMAGED`).
 servers:
   - url: /api
     description: Cùng origin (proxy hoặc mock MSW)
@@ -54,6 +58,10 @@ tags:
     description: Nhà cung cấp & khách hàng
   - name: audit
     description: Nhật ký thao tác (audit log)
+  - name: alerts
+    description: Cảnh báo tồn kho (dưới tối thiểu, sắp hết hạn, hết hạn)
+  - name: reports
+    description: Báo cáo (thẻ kho, nhập-xuất-tồn, giá trị tồn, ABC)
 
 paths:
   # ───────────────────────────── AUTH ─────────────────────────────
@@ -938,6 +946,29 @@ paths:
         '409': { $ref: '#/components/responses/InvalidState' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
+  /goods-issues/allocation-preview:
+    post:
+      tags: [goods-issues]
+      operationId: previewIssueAllocation
+      summary: Gợi ý lấy hàng theo FEFO cho các dòng xuất (không ghi dữ liệu)
+      description: |
+        Dùng khi lập phiếu xuất và in phiếu lấy hàng (picking list). Kết quả có thể khác lúc duyệt
+        nếu tồn thay đổi trong khoảng giữa.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AllocationPreviewRequest' }
+      responses:
+        '200':
+          description: Phân bổ đề xuất theo dòng
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AllocationPreview' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
   # ───────────────────────────── STOCK MOVEMENTS ─────────────────────────────
   /stock-movements:
     get:
@@ -956,6 +987,9 @@ paths:
         - name: type
           in: query
           schema: { $ref: '#/components/schemas/MovementType' }
+        - name: lotNumber
+          in: query
+          schema: { type: string }
         - $ref: '#/components/parameters/FromDate'
         - $ref: '#/components/parameters/ToDate'
       responses:
@@ -1214,6 +1248,82 @@ paths:
               schema: { $ref: '#/components/schemas/BinStockPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+
+  /stock/lots:
+    get:
+      tags: [stock]
+      operationId: listStockLots
+      summary: Tồn theo lô / hạn sử dụng (sản phẩm × ô × lô)
+      description: Chỉ gồm sản phẩm quản lý theo lô hoặc hạn sử dụng, số lượng > 0.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - $ref: '#/components/parameters/WarehouseFilter'
+        - name: productId
+          in: query
+          schema: { type: string }
+        - name: expiryStatus
+          in: query
+          schema: { $ref: '#/components/schemas/ExpiryStatus' }
+        - $ref: '#/components/parameters/ExpiringDays'
+      responses:
+        '200':
+          description: Trang tồn theo lô
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StockLotPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /serials:
+    get:
+      tags: [stock]
+      operationId: listSerials
+      summary: Tra cứu số serial (sản phẩm quản lý serial)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - $ref: '#/components/parameters/WarehouseFilter'
+        - name: productId
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/SerialStatus' }
+        - name: locationId
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Trang serial
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SerialUnitPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /serials/{serialNumber}:
+    get:
+      tags: [stock]
+      operationId: getSerial
+      summary: Tra một số serial (dùng khi quét mã)
+      parameters:
+        - name: serialNumber
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Serial
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SerialUnit' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ───────────────────────────── TRANSFERS ─────────────────────────────
   /transfers:
@@ -1791,6 +1901,171 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  # ───────────────────────────── ALERTS ─────────────────────────────
+  /alerts:
+    get:
+      tags: [alerts]
+      operationId: listAlerts
+      summary: Cảnh báo tồn kho, nặng nhất trước
+      description: |
+        - `OUT_OF_STOCK` / `LOW_STOCK`: theo sản phẩm × kho, so với `minStock` (sản phẩm đang kinh doanh).
+        - `EXPIRED` / `EXPIRING`: theo lô còn tồn; sắp hết hạn = còn ≤ `days` ngày.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - $ref: '#/components/parameters/WarehouseFilter'
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/AlertType' }
+        - $ref: '#/components/parameters/ExpiringDays'
+      responses:
+        '200':
+          description: Trang cảnh báo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /alerts/summary:
+    get:
+      tags: [alerts]
+      operationId: getAlertSummary
+      summary: Đếm cảnh báo theo loại (huy hiệu trên header)
+      parameters:
+        - $ref: '#/components/parameters/WarehouseFilter'
+        - $ref: '#/components/parameters/ExpiringDays'
+      responses:
+        '200':
+          description: Số cảnh báo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  # ───────────────────────────── REPORTS ─────────────────────────────
+  /reports/stock-card:
+    get:
+      tags: [reports]
+      operationId: getStockCard
+      summary: Thẻ kho của một sản phẩm trong khoảng ngày
+      description: |
+        Tồn đầu kỳ, từng biến động (nhập/xuất, số dư lũy kế) và tồn cuối kỳ. Không truyền
+        `warehouseId` = gộp mọi kho người dùng được xem. Khoảng ngày tối đa 366 ngày.
+      parameters:
+        - name: productId
+          in: query
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/WarehouseFilter'
+        - name: lotNumber
+          in: query
+          schema: { type: string }
+        - $ref: '#/components/parameters/ReportFromDate'
+        - $ref: '#/components/parameters/ReportToDate'
+      responses:
+        '200':
+          description: Thẻ kho
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StockCard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /reports/inventory-summary:
+    get:
+      tags: [reports]
+      operationId: getInventorySummary
+      summary: Báo cáo nhập – xuất – tồn theo sản phẩm trong kỳ
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - $ref: '#/components/parameters/WarehouseFilter'
+        - name: categoryId
+          in: query
+          schema: { type: string }
+        - name: onlyActive
+          in: query
+          description: Chỉ dòng có phát sinh hoặc còn tồn (mặc định true)
+          schema: { type: boolean, default: true }
+        - $ref: '#/components/parameters/ReportFromDate'
+        - $ref: '#/components/parameters/ReportToDate'
+      responses:
+        '200':
+          description: Trang NXT kèm tổng cộng
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InventorySummaryPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /reports/stock-value:
+    get:
+      tags: [reports]
+      operationId: getStockValue
+      summary: Giá trị tồn kho hiện tại theo sản phẩm (giá vốn bình quân)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Q'
+        - $ref: '#/components/parameters/WarehouseFilter'
+        - name: categoryId
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Trang giá trị tồn kèm tổng hợp theo nhóm hàng và kho
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StockValuePage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /reports/abc:
+    get:
+      tags: [reports]
+      operationId: getAbcAnalysis
+      summary: Phân tích ABC (Pareto) theo giá trị xuất trong kỳ hoặc giá trị tồn
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Q'
+        - $ref: '#/components/parameters/WarehouseFilter'
+        - name: basis
+          in: query
+          schema: { $ref: '#/components/schemas/AbcBasis' }
+        - name: abcClass
+          in: query
+          schema: { $ref: '#/components/schemas/AbcClass' }
+        - name: thresholdA
+          in: query
+          description: Ngưỡng tích lũy nhóm A (%)
+          schema: { type: integer, minimum: 50, maximum: 95, default: 80 }
+        - name: thresholdB
+          in: query
+          description: Ngưỡng tích lũy nhóm B (%), lớn hơn thresholdA
+          schema: { type: integer, minimum: 55, maximum: 99, default: 95 }
+        - $ref: '#/components/parameters/ReportFromDate'
+        - $ref: '#/components/parameters/ReportToDate'
+      responses:
+        '200':
+          description: Phân tích ABC (dòng theo hạng, tổng hợp nhóm, đường Pareto)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AbcReport' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1842,6 +2117,23 @@ components:
       in: query
       description: Đến ngày (bao gồm), `YYYY-MM-DD`
       schema: { type: string, format: date }
+    ReportFromDate:
+      name: from
+      in: query
+      required: true
+      description: Từ ngày (bao gồm), `YYYY-MM-DD`
+      schema: { type: string, format: date }
+    ReportToDate:
+      name: to
+      in: query
+      required: true
+      description: Đến ngày (bao gồm), `YYYY-MM-DD`
+      schema: { type: string, format: date }
+    ExpiringDays:
+      name: days
+      in: query
+      description: Ngưỡng "sắp hết hạn" — số ngày còn lại tối đa
+      schema: { type: integer, minimum: 1, maximum: 365, default: 30 }
 
   responses:
     Unauthorized:
@@ -1960,6 +2252,7 @@ components:
         - supplier:write
         - customer:read
         - customer:write
+        - report:read
 
     LoginRequest:
       type: object
@@ -2131,6 +2424,7 @@ components:
         - minStock
         - trackLot
         - trackExpiry
+        - trackSerial
         - status
         - totalStock
         - createdAt
@@ -2152,6 +2446,7 @@ components:
         maxStock: { type: integer, minimum: 0 }
         trackLot: { type: boolean, description: Quản lý theo lô }
         trackExpiry: { type: boolean, description: Quản lý hạn sử dụng }
+        trackSerial: { type: boolean, description: Quản lý từng đơn vị theo số serial }
         status: { $ref: '#/components/schemas/ProductStatus' }
         description: { type: string }
         imageUrl: { type: string, format: uri }
@@ -2185,6 +2480,7 @@ components:
         maxStock: { type: integer, minimum: 0 }
         trackLot: { type: boolean }
         trackExpiry: { type: boolean }
+        trackSerial: { type: boolean, default: false }
         status: { $ref: '#/components/schemas/ProductStatus' }
         description: { type: string, maxLength: 2000 }
         imageUrl: { type: string, format: uri }
@@ -2338,18 +2634,38 @@ components:
         quantity: { type: integer, minimum: 1 }
         unitCost: { type: integer, minimum: 0, description: Đơn giá nhập (VND) }
         amount: { type: integer, description: quantity × unitCost }
+        trackLot: { type: boolean }
+        trackExpiry: { type: boolean }
+        trackSerial: { type: boolean }
         lotNumber: { type: string }
         expiryDate: { type: string, format: date }
+        serialNumbers:
+          type: array
+          items: { type: string }
+        locationId:
+          {
+            type: [string, 'null'],
+            description: Ô cất hàng (chỉ định,
+            hoặc hệ thống chọn khi duyệt),
+          }
+        locationCode: { type: [string, 'null'] }
 
     GoodsReceiptLineRequest:
       type: object
       required: [productId, quantity, unitCost]
+      description: |
+        `lotNumber` bắt buộc khi sản phẩm `trackLot`; `expiryDate` bắt buộc (và sau ngày nhập) khi
+        `trackExpiry`; `serialNumbers` bắt buộc, đủ `quantity` số, không trùng khi `trackSerial`.
       properties:
         productId: { type: string }
         quantity: { type: integer, minimum: 1 }
         unitCost: { type: integer, minimum: 0 }
         lotNumber: { type: string, maxLength: 50 }
         expiryDate: { type: string, format: date }
+        serialNumbers:
+          type: array
+          items: { type: string, maxLength: 64 }
+        locationId: { type: [string, 'null'], description: Ô cất hàng (null = tự chọn) }
 
     GoodsReceiptSummary:
       type: object
@@ -2426,7 +2742,7 @@ components:
 
     GoodsIssueLine:
       type: object
-      required: [id, productId, sku, productName, unit, quantity, unitPrice, amount]
+      required: [id, productId, sku, productName, unit, quantity, unitPrice, amount, picks]
       properties:
         id: { type: string }
         productId: { type: string }
@@ -2437,6 +2753,18 @@ components:
         unitPrice: { type: integer, minimum: 0, description: Đơn giá xuất/bán (VND) }
         amount: { type: integer, description: quantity × unitPrice }
         unitCost: { type: integer, description: Giá vốn tại thời điểm duyệt (chỉ có khi đã duyệt) }
+        trackLot: { type: boolean }
+        trackExpiry: { type: boolean }
+        trackSerial: { type: boolean }
+        lotNumber: { type: [string, 'null'], description: Lô chỉ định (null = FEFO) }
+        serialNumbers:
+          type: array
+          description: Serial chỉ định (rỗng = hệ thống chọn)
+          items: { type: string }
+        picks:
+          type: array
+          description: Ô / lô / serial đã lấy khi duyệt
+          items: { $ref: '#/components/schemas/StockPick' }
 
     GoodsIssueLineRequest:
       type: object
@@ -2445,6 +2773,11 @@ components:
         productId: { type: string }
         quantity: { type: integer, minimum: 1 }
         unitPrice: { type: integer, minimum: 0 }
+        lotNumber: { type: [string, 'null'], description: Chỉ lấy từ lô này (null = FEFO) }
+        serialNumbers:
+          type: array
+          description: Serial chỉ định — nếu có phải đủ `quantity` số
+          items: { type: string, maxLength: 64 }
 
     GoodsIssueSummary:
       type: object
@@ -2571,6 +2904,11 @@ components:
         documentCode: { type: string }
         createdBy: { $ref: '#/components/schemas/UserRef' }
         note: { type: string }
+        lotNumber: { type: [string, 'null'] }
+        expiryDate: { type: [string, 'null'], format: date }
+        serialNumbers:
+          type: array
+          items: { type: string }
 
     StockMovementPage:
       allOf:
@@ -2817,9 +3155,14 @@ components:
       type: object
       required: [locationId, locationCode, quantity]
       properties:
-        locationId: { type: string }
-        locationCode: { type: string }
+        locationId: { type: [string, 'null'], description: null = kho chưa khai báo vị trí }
+        locationCode: { type: [string, 'null'] }
         quantity: { type: integer }
+        lotNumber: { type: [string, 'null'] }
+        expiryDate: { type: [string, 'null'], format: date }
+        serialNumbers:
+          type: array
+          items: { type: string }
 
     TransferLine:
       type: object
@@ -3283,3 +3626,452 @@ components:
             items:
               type: array
               items: { $ref: '#/components/schemas/AuditLog' }
+
+    # ── Lô / hạn sử dụng / serial ──
+    ExpiryStatus:
+      type: string
+      enum: [NO_EXPIRY, VALID, EXPIRING, EXPIRED]
+      description: 'EXPIRING: còn ≤ `days` ngày; EXPIRED: đã qua ngày hết hạn'
+
+    StockPick:
+      type: object
+      required: [quantity]
+      description: Một phần lấy hàng — ô, lô (nếu có) và serial (nếu có)
+      properties:
+        locationId: { type: [string, 'null'] }
+        locationCode: { type: [string, 'null'] }
+        lotNumber: { type: [string, 'null'] }
+        expiryDate: { type: [string, 'null'], format: date }
+        quantity: { type: integer, minimum: 1 }
+        serialNumbers:
+          type: array
+          items: { type: string }
+
+    StockLot:
+      type: object
+      required:
+        - id
+        - productId
+        - sku
+        - productName
+        - unit
+        - warehouseId
+        - warehouseName
+        - quantity
+        - receivedAt
+        - expiryStatus
+      properties:
+        id: { type: string }
+        productId: { type: string }
+        sku: { type: string }
+        productName: { type: string }
+        unit: { type: string }
+        warehouseId: { type: string }
+        warehouseName: { type: string }
+        locationId: { type: [string, 'null'] }
+        locationCode: { type: [string, 'null'] }
+        lotNumber: { type: [string, 'null'] }
+        expiryDate: { type: [string, 'null'], format: date }
+        daysToExpiry: { type: [integer, 'null'], description: Số ngày còn lại (âm = đã hết hạn) }
+        expiryStatus: { $ref: '#/components/schemas/ExpiryStatus' }
+        quantity: { type: integer, minimum: 1 }
+        receivedAt: { type: string, format: date-time, description: Lần nhập đầu tiên của lô vào ô }
+
+    StockLotPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/StockLot' }
+
+    SerialStatus:
+      type: string
+      enum: [IN_STOCK, IN_TRANSIT, ISSUED, WRITTEN_OFF]
+      description: 'WRITTEN_OFF: hủy nhập, kiểm kê thiếu hoặc thất lạc khi chuyển kho'
+
+    SerialUnit:
+      type: object
+      required: [serialNumber, productId, sku, productName, status, receivedAt, updatedAt]
+      properties:
+        serialNumber: { type: string }
+        productId: { type: string }
+        sku: { type: string }
+        productName: { type: string }
+        status: { $ref: '#/components/schemas/SerialStatus' }
+        warehouseId: { type: [string, 'null'] }
+        warehouseName: { type: [string, 'null'] }
+        locationId: { type: [string, 'null'] }
+        locationCode: { type: [string, 'null'] }
+        lotNumber: { type: [string, 'null'] }
+        expiryDate: { type: [string, 'null'], format: date }
+        receivedAt: { type: string, format: date-time }
+        lastDocumentType: { $ref: '#/components/schemas/DocumentType' }
+        lastDocumentId: { type: string }
+        lastDocumentCode: { type: string }
+        updatedAt: { type: string, format: date-time }
+
+    SerialUnitPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/SerialUnit' }
+
+    AllocationPreviewRequest:
+      type: object
+      required: [warehouseId, reason, lines]
+      properties:
+        warehouseId: { type: string }
+        reason: { $ref: '#/components/schemas/IssueReason' }
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [productId, quantity]
+            properties:
+              productId: { type: string }
+              quantity: { type: integer, minimum: 1 }
+              lotNumber: { type: [string, 'null'] }
+              serialNumbers:
+                type: array
+                items: { type: string }
+
+    AllocationPreviewLine:
+      type: object
+      required: [index, productId, requested, available, picks, shortage, expiredExcluded]
+      properties:
+        index: { type: integer, description: Chỉ số dòng trong request }
+        productId: { type: string }
+        requested: { type: integer }
+        available: { type: integer, description: Tồn có thể xuất (đã loại lô hết hạn nếu cần) }
+        expiredExcluded: { type: integer, description: Số lượng thuộc lô hết hạn bị loại }
+        shortage: { type: integer, description: Số còn thiếu (0 = đủ) }
+        picks:
+          type: array
+          items: { $ref: '#/components/schemas/StockPick' }
+        message: { type: string }
+
+    AllocationPreview:
+      type: object
+      required: [warehouseId, asOf, lines]
+      properties:
+        warehouseId: { type: string }
+        asOf: { type: string, format: date }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/AllocationPreviewLine' }
+
+    # ── Cảnh báo ──
+    AlertType:
+      type: string
+      enum: [OUT_OF_STOCK, LOW_STOCK, EXPIRED, EXPIRING]
+
+    AlertSeverity:
+      type: string
+      enum: [CRITICAL, WARNING]
+
+    Alert:
+      type: object
+      required:
+        - id
+        - type
+        - severity
+        - productId
+        - sku
+        - productName
+        - unit
+        - warehouseId
+        - warehouseName
+        - quantity
+        - value
+      properties:
+        id: { type: string }
+        type: { $ref: '#/components/schemas/AlertType' }
+        severity: { $ref: '#/components/schemas/AlertSeverity' }
+        productId: { type: string }
+        sku: { type: string }
+        productName: { type: string }
+        unit: { type: string }
+        warehouseId: { type: string }
+        warehouseName: { type: string }
+        quantity: { type: integer, description: Tồn hiện tại (của kho hoặc của lô) }
+        minStock: { type: integer }
+        suggestedQuantity:
+          { type: integer, description: Đề xuất nhập thêm (tới maxStock, hoặc 2 × minStock) }
+        lotNumber: { type: [string, 'null'] }
+        expiryDate: { type: [string, 'null'], format: date }
+        daysToExpiry: { type: [integer, 'null'] }
+        locationCode: { type: [string, 'null'] }
+        value: { type: integer, description: Giá trị tồn liên quan (VND, giá vốn bình quân) }
+
+    AlertPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Alert' }
+
+    AlertSummary:
+      type: object
+      required: [total, critical, outOfStock, lowStock, expired, expiring, expiringDays]
+      properties:
+        total: { type: integer }
+        critical: { type: integer, description: Hết hàng + hết hạn }
+        outOfStock: { type: integer }
+        lowStock: { type: integer }
+        expired: { type: integer }
+        expiring: { type: integer }
+        expiringDays: { type: integer }
+
+    # ── Báo cáo ──
+    StockCardEntry:
+      type: object
+      required:
+        - id
+        - occurredAt
+        - type
+        - documentType
+        - documentId
+        - documentCode
+        - warehouseId
+        - warehouseName
+        - inbound
+        - outbound
+        - balance
+        - unitCost
+      properties:
+        id: { type: string }
+        occurredAt: { type: string, format: date-time }
+        type: { $ref: '#/components/schemas/MovementType' }
+        documentType: { $ref: '#/components/schemas/DocumentType' }
+        documentId: { type: string }
+        documentCode: { type: string }
+        warehouseId: { type: string }
+        warehouseName: { type: string }
+        locationCode: { type: [string, 'null'] }
+        lotNumber: { type: [string, 'null'] }
+        expiryDate: { type: [string, 'null'], format: date }
+        inbound: { type: integer, minimum: 0 }
+        outbound: { type: integer, minimum: 0 }
+        balance: { type: integer, description: Số dư lũy kế sau dòng này (trong phạm vi báo cáo) }
+        unitCost: { type: integer }
+        note: { type: string }
+
+    StockCard:
+      type: object
+      required:
+        - productId
+        - sku
+        - productName
+        - unit
+        - from
+        - to
+        - openingQuantity
+        - inboundQuantity
+        - outboundQuantity
+        - closingQuantity
+        - entries
+      properties:
+        productId: { type: string }
+        sku: { type: string }
+        productName: { type: string }
+        unit: { type: string }
+        warehouseId: { type: [string, 'null'] }
+        warehouseName: { type: [string, 'null'], description: null = mọi kho được xem }
+        lotNumber: { type: [string, 'null'] }
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        openingQuantity: { type: integer }
+        inboundQuantity: { type: integer }
+        outboundQuantity: { type: integer }
+        closingQuantity: { type: integer }
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/StockCardEntry' }
+
+    InventorySummaryRow:
+      type: object
+      required:
+        - productId
+        - sku
+        - productName
+        - unit
+        - categoryName
+        - openingQuantity
+        - openingValue
+        - inboundQuantity
+        - inboundValue
+        - outboundQuantity
+        - outboundValue
+        - closingQuantity
+        - closingValue
+      properties:
+        productId: { type: string }
+        sku: { type: string }
+        productName: { type: string }
+        unit: { type: string }
+        categoryName: { type: string }
+        openingQuantity: { type: integer }
+        openingValue: { type: integer }
+        inboundQuantity: { type: integer }
+        inboundValue: { type: integer }
+        outboundQuantity: { type: integer }
+        outboundValue: { type: integer, description: Giá vốn hàng xuất }
+        closingQuantity: { type: integer }
+        closingValue: { type: integer }
+
+    InventorySummaryTotals:
+      type: object
+      required:
+        - openingValue
+        - inboundValue
+        - outboundValue
+        - closingValue
+        - openingQuantity
+        - inboundQuantity
+        - outboundQuantity
+        - closingQuantity
+      properties:
+        openingQuantity: { type: integer }
+        openingValue: { type: integer }
+        inboundQuantity: { type: integer }
+        inboundValue: { type: integer }
+        outboundQuantity: { type: integer }
+        outboundValue: { type: integer }
+        closingQuantity: { type: integer }
+        closingValue: { type: integer }
+
+    InventorySummaryPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items, totals, from, to]
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/InventorySummaryRow' }
+            totals: { $ref: '#/components/schemas/InventorySummaryTotals' }
+
+    StockValueRow:
+      type: object
+      required:
+        [productId, sku, productName, unit, categoryName, quantity, averageCost, value, share]
+      properties:
+        productId: { type: string }
+        sku: { type: string }
+        productName: { type: string }
+        unit: { type: string }
+        categoryName: { type: string }
+        quantity: { type: integer }
+        averageCost: { type: integer, description: Giá vốn bình quân (gộp các kho trong phạm vi) }
+        value: { type: integer }
+        share: { type: number, description: Tỷ trọng trong tổng giá trị (%) }
+
+    ValueGroup:
+      type: object
+      required: [id, name, quantity, value, share]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        quantity: { type: integer }
+        value: { type: integer }
+        share: { type: number }
+
+    StockValuePage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [items, totalQuantity, totalValue, byCategory, byWarehouse]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/StockValueRow' }
+            totalQuantity: { type: integer }
+            totalValue: { type: integer }
+            byCategory:
+              type: array
+              items: { $ref: '#/components/schemas/ValueGroup' }
+            byWarehouse:
+              type: array
+              items: { $ref: '#/components/schemas/ValueGroup' }
+
+    AbcBasis:
+      type: string
+      enum: [ISSUE_VALUE, STOCK_VALUE]
+      description: 'ISSUE_VALUE: giá vốn hàng xuất trong kỳ; STOCK_VALUE: giá trị tồn hiện tại'
+
+    AbcClass:
+      type: string
+      enum: [A, B, C]
+
+    AbcRow:
+      type: object
+      required:
+        [
+          rank,
+          productId,
+          sku,
+          productName,
+          categoryName,
+          quantity,
+          value,
+          share,
+          cumulativeShare,
+          abcClass,
+        ]
+      properties:
+        rank: { type: integer, minimum: 1 }
+        productId: { type: string }
+        sku: { type: string }
+        productName: { type: string }
+        categoryName: { type: string }
+        quantity: { type: integer }
+        value: { type: integer }
+        share: { type: number, description: '%' }
+        cumulativeShare: { type: number, description: '% tích lũy' }
+        abcClass: { $ref: '#/components/schemas/AbcClass' }
+
+    AbcClassSummary:
+      type: object
+      required: [abcClass, productCount, productShare, value, valueShare]
+      properties:
+        abcClass: { $ref: '#/components/schemas/AbcClass' }
+        productCount: { type: integer }
+        productShare: { type: number, description: '% số mặt hàng' }
+        value: { type: integer }
+        valueShare: { type: number, description: '% giá trị' }
+
+    AbcReport:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [basis, from, to, thresholdA, thresholdB, totalValue, items, classes, pareto]
+          properties:
+            basis: { $ref: '#/components/schemas/AbcBasis' }
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+            thresholdA: { type: integer }
+            thresholdB: { type: integer }
+            totalValue: { type: integer }
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/AbcRow' }
+            classes:
+              type: array
+              items: { $ref: '#/components/schemas/AbcClassSummary' }
+            pareto:
+              type: array
+              description: '% tích lũy theo hạng (toàn bộ mặt hàng, không phân trang) — vẽ đường Pareto'
+              items: { type: number }

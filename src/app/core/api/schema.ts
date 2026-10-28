@@ -534,6 +534,27 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/goods-issues/allocation-preview': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Gợi ý lấy hàng theo FEFO cho các dòng xuất (không ghi dữ liệu)
+     * @description Dùng khi lập phiếu xuất và in phiếu lấy hàng (picking list). Kết quả có thể khác lúc duyệt
+     *     nếu tồn thay đổi trong khoảng giữa.
+     */
+    post: operations['previewIssueAllocation'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/stock-movements': {
     parameters: {
       query?: never;
@@ -723,6 +744,60 @@ export interface paths {
     };
     /** Tồn theo ô (vị trí lưu trữ) */
     get: operations['listBinStock'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/stock/lots': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Tồn theo lô / hạn sử dụng (sản phẩm × ô × lô)
+     * @description Chỉ gồm sản phẩm quản lý theo lô hoặc hạn sử dụng, số lượng > 0.
+     */
+    get: operations['listStockLots'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/serials': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Tra cứu số serial (sản phẩm quản lý serial) */
+    get: operations['listSerials'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/serials/{serialNumber}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Tra một số serial (dùng khi quét mã) */
+    get: operations['getSerial'];
     put?: never;
     post?: never;
     delete?: never;
@@ -1108,6 +1183,116 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/alerts': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Cảnh báo tồn kho, nặng nhất trước
+     * @description - `OUT_OF_STOCK` / `LOW_STOCK`: theo sản phẩm × kho, so với `minStock` (sản phẩm đang kinh doanh).
+     *     - `EXPIRED` / `EXPIRING`: theo lô còn tồn; sắp hết hạn = còn ≤ `days` ngày.
+     */
+    get: operations['listAlerts'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/alerts/summary': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Đếm cảnh báo theo loại (huy hiệu trên header) */
+    get: operations['getAlertSummary'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/reports/stock-card': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Thẻ kho của một sản phẩm trong khoảng ngày
+     * @description Tồn đầu kỳ, từng biến động (nhập/xuất, số dư lũy kế) và tồn cuối kỳ. Không truyền
+     *     `warehouseId` = gộp mọi kho người dùng được xem. Khoảng ngày tối đa 366 ngày.
+     */
+    get: operations['getStockCard'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/reports/inventory-summary': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Báo cáo nhập – xuất – tồn theo sản phẩm trong kỳ */
+    get: operations['getInventorySummary'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/reports/stock-value': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Giá trị tồn kho hiện tại theo sản phẩm (giá vốn bình quân) */
+    get: operations['getStockValue'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/reports/abc': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Phân tích ABC (Pareto) theo giá trị xuất trong kỳ hoặc giá trị tồn */
+    get: operations['getAbcAnalysis'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1178,7 +1363,8 @@ export interface components {
       | 'supplier:read'
       | 'supplier:write'
       | 'customer:read'
-      | 'customer:write';
+      | 'customer:write'
+      | 'report:read';
     LoginRequest: {
       username: string;
       password: string;
@@ -1301,6 +1487,8 @@ export interface components {
       trackLot: boolean;
       /** @description Quản lý hạn sử dụng */
       trackExpiry: boolean;
+      /** @description Quản lý từng đơn vị theo số serial */
+      trackSerial: boolean;
       status: components['schemas']['ProductStatus'];
       description?: string;
       /** Format: uri */
@@ -1327,6 +1515,8 @@ export interface components {
       maxStock?: number;
       trackLot: boolean;
       trackExpiry: boolean;
+      /** @default false */
+      trackSerial: boolean;
       status: components['schemas']['ProductStatus'];
       description?: string;
       /** Format: uri */
@@ -1434,10 +1624,21 @@ export interface components {
       unitCost: number;
       /** @description quantity × unitCost */
       amount: number;
+      trackLot?: boolean;
+      trackExpiry?: boolean;
+      trackSerial?: boolean;
       lotNumber?: string;
       /** Format: date */
       expiryDate?: string;
+      serialNumbers?: string[];
+      /** @description Ô cất hàng (chỉ định */
+      locationId?: string | null;
+      locationCode?: string | null;
     };
+    /**
+     * @description `lotNumber` bắt buộc khi sản phẩm `trackLot`; `expiryDate` bắt buộc (và sau ngày nhập) khi
+     *     `trackExpiry`; `serialNumbers` bắt buộc, đủ `quantity` số, không trùng khi `trackSerial`.
+     */
     GoodsReceiptLineRequest: {
       productId: string;
       quantity: number;
@@ -1445,6 +1646,9 @@ export interface components {
       lotNumber?: string;
       /** Format: date */
       expiryDate?: string;
+      serialNumbers?: string[];
+      /** @description Ô cất hàng (null = tự chọn) */
+      locationId?: string | null;
     };
     GoodsReceiptSummary: {
       id: string;
@@ -1499,11 +1703,24 @@ export interface components {
       amount: number;
       /** @description Giá vốn tại thời điểm duyệt (chỉ có khi đã duyệt) */
       unitCost?: number;
+      trackLot?: boolean;
+      trackExpiry?: boolean;
+      trackSerial?: boolean;
+      /** @description Lô chỉ định (null = FEFO) */
+      lotNumber?: string | null;
+      /** @description Serial chỉ định (rỗng = hệ thống chọn) */
+      serialNumbers?: string[];
+      /** @description Ô / lô / serial đã lấy khi duyệt */
+      picks: components['schemas']['StockPick'][];
     };
     GoodsIssueLineRequest: {
       productId: string;
       quantity: number;
       unitPrice: number;
+      /** @description Chỉ lấy từ lô này (null = FEFO) */
+      lotNumber?: string | null;
+      /** @description Serial chỉ định — nếu có phải đủ `quantity` số */
+      serialNumbers?: string[];
     };
     GoodsIssueSummary: {
       id: string;
@@ -1580,6 +1797,10 @@ export interface components {
       documentCode: string;
       createdBy: components['schemas']['UserRef'];
       note?: string;
+      lotNumber?: string | null;
+      /** Format: date */
+      expiryDate?: string | null;
+      serialNumbers?: string[];
     };
     StockMovementPage: components['schemas']['PageMeta'] & {
       items: components['schemas']['StockMovement'][];
@@ -1745,9 +1966,14 @@ export interface components {
      */
     TransferStatus: 'DRAFT' | 'IN_TRANSIT' | 'RECEIVED' | 'CANCELLED';
     TransferPick: {
-      locationId: string;
-      locationCode: string;
+      /** @description null = kho chưa khai báo vị trí */
+      locationId: string | null;
+      locationCode: string | null;
       quantity: number;
+      lotNumber?: string | null;
+      /** Format: date */
+      expiryDate?: string | null;
+      serialNumbers?: string[];
     };
     TransferLine: {
       id: string;
@@ -2080,6 +2306,291 @@ export interface components {
     AuditLogPage: components['schemas']['PageMeta'] & {
       items: components['schemas']['AuditLog'][];
     };
+    /**
+     * @description EXPIRING: còn ≤ `days` ngày; EXPIRED: đã qua ngày hết hạn
+     * @enum {string}
+     */
+    ExpiryStatus: 'NO_EXPIRY' | 'VALID' | 'EXPIRING' | 'EXPIRED';
+    /** @description Một phần lấy hàng — ô, lô (nếu có) và serial (nếu có) */
+    StockPick: {
+      locationId?: string | null;
+      locationCode?: string | null;
+      lotNumber?: string | null;
+      /** Format: date */
+      expiryDate?: string | null;
+      quantity: number;
+      serialNumbers?: string[];
+    };
+    StockLot: {
+      id: string;
+      productId: string;
+      sku: string;
+      productName: string;
+      unit: string;
+      warehouseId: string;
+      warehouseName: string;
+      locationId?: string | null;
+      locationCode?: string | null;
+      lotNumber?: string | null;
+      /** Format: date */
+      expiryDate?: string | null;
+      /** @description Số ngày còn lại (âm = đã hết hạn) */
+      daysToExpiry?: number | null;
+      expiryStatus: components['schemas']['ExpiryStatus'];
+      quantity: number;
+      /**
+       * Format: date-time
+       * @description Lần nhập đầu tiên của lô vào ô
+       */
+      receivedAt: string;
+    };
+    StockLotPage: components['schemas']['PageMeta'] & {
+      items: components['schemas']['StockLot'][];
+    };
+    /**
+     * @description WRITTEN_OFF: hủy nhập, kiểm kê thiếu hoặc thất lạc khi chuyển kho
+     * @enum {string}
+     */
+    SerialStatus: 'IN_STOCK' | 'IN_TRANSIT' | 'ISSUED' | 'WRITTEN_OFF';
+    SerialUnit: {
+      serialNumber: string;
+      productId: string;
+      sku: string;
+      productName: string;
+      status: components['schemas']['SerialStatus'];
+      warehouseId?: string | null;
+      warehouseName?: string | null;
+      locationId?: string | null;
+      locationCode?: string | null;
+      lotNumber?: string | null;
+      /** Format: date */
+      expiryDate?: string | null;
+      /** Format: date-time */
+      receivedAt: string;
+      lastDocumentType?: components['schemas']['DocumentType'];
+      lastDocumentId?: string;
+      lastDocumentCode?: string;
+      /** Format: date-time */
+      updatedAt: string;
+    };
+    SerialUnitPage: components['schemas']['PageMeta'] & {
+      items: components['schemas']['SerialUnit'][];
+    };
+    AllocationPreviewRequest: {
+      warehouseId: string;
+      reason: components['schemas']['IssueReason'];
+      lines: {
+        productId: string;
+        quantity: number;
+        lotNumber?: string | null;
+        serialNumbers?: string[];
+      }[];
+    };
+    AllocationPreviewLine: {
+      /** @description Chỉ số dòng trong request */
+      index: number;
+      productId: string;
+      requested: number;
+      /** @description Tồn có thể xuất (đã loại lô hết hạn nếu cần) */
+      available: number;
+      /** @description Số lượng thuộc lô hết hạn bị loại */
+      expiredExcluded: number;
+      /** @description Số còn thiếu (0 = đủ) */
+      shortage: number;
+      picks: components['schemas']['StockPick'][];
+      message?: string;
+    };
+    AllocationPreview: {
+      warehouseId: string;
+      /** Format: date */
+      asOf: string;
+      lines: components['schemas']['AllocationPreviewLine'][];
+    };
+    /** @enum {string} */
+    AlertType: 'OUT_OF_STOCK' | 'LOW_STOCK' | 'EXPIRED' | 'EXPIRING';
+    /** @enum {string} */
+    AlertSeverity: 'CRITICAL' | 'WARNING';
+    Alert: {
+      id: string;
+      type: components['schemas']['AlertType'];
+      severity: components['schemas']['AlertSeverity'];
+      productId: string;
+      sku: string;
+      productName: string;
+      unit: string;
+      warehouseId: string;
+      warehouseName: string;
+      /** @description Tồn hiện tại (của kho hoặc của lô) */
+      quantity: number;
+      minStock?: number;
+      /** @description Đề xuất nhập thêm (tới maxStock */
+      suggestedQuantity?: number;
+      lotNumber?: string | null;
+      /** Format: date */
+      expiryDate?: string | null;
+      daysToExpiry?: number | null;
+      locationCode?: string | null;
+      /** @description Giá trị tồn liên quan (VND */
+      value: number;
+    };
+    AlertPage: components['schemas']['PageMeta'] & {
+      items: components['schemas']['Alert'][];
+    };
+    AlertSummary: {
+      total: number;
+      /** @description Hết hàng + hết hạn */
+      critical: number;
+      outOfStock: number;
+      lowStock: number;
+      expired: number;
+      expiring: number;
+      expiringDays: number;
+    };
+    StockCardEntry: {
+      id: string;
+      /** Format: date-time */
+      occurredAt: string;
+      type: components['schemas']['MovementType'];
+      documentType: components['schemas']['DocumentType'];
+      documentId: string;
+      documentCode: string;
+      warehouseId: string;
+      warehouseName: string;
+      locationCode?: string | null;
+      lotNumber?: string | null;
+      /** Format: date */
+      expiryDate?: string | null;
+      inbound: number;
+      outbound: number;
+      /** @description Số dư lũy kế sau dòng này (trong phạm vi báo cáo) */
+      balance: number;
+      unitCost: number;
+      note?: string;
+    };
+    StockCard: {
+      productId: string;
+      sku: string;
+      productName: string;
+      unit: string;
+      warehouseId?: string | null;
+      /** @description null = mọi kho được xem */
+      warehouseName?: string | null;
+      lotNumber?: string | null;
+      /** Format: date */
+      from: string;
+      /** Format: date */
+      to: string;
+      openingQuantity: number;
+      inboundQuantity: number;
+      outboundQuantity: number;
+      closingQuantity: number;
+      entries: components['schemas']['StockCardEntry'][];
+    };
+    InventorySummaryRow: {
+      productId: string;
+      sku: string;
+      productName: string;
+      unit: string;
+      categoryName: string;
+      openingQuantity: number;
+      openingValue: number;
+      inboundQuantity: number;
+      inboundValue: number;
+      outboundQuantity: number;
+      /** @description Giá vốn hàng xuất */
+      outboundValue: number;
+      closingQuantity: number;
+      closingValue: number;
+    };
+    InventorySummaryTotals: {
+      openingQuantity: number;
+      openingValue: number;
+      inboundQuantity: number;
+      inboundValue: number;
+      outboundQuantity: number;
+      outboundValue: number;
+      closingQuantity: number;
+      closingValue: number;
+    };
+    InventorySummaryPage: components['schemas']['PageMeta'] & {
+      /** Format: date */
+      from: string;
+      /** Format: date */
+      to: string;
+      items: components['schemas']['InventorySummaryRow'][];
+      totals: components['schemas']['InventorySummaryTotals'];
+    };
+    StockValueRow: {
+      productId: string;
+      sku: string;
+      productName: string;
+      unit: string;
+      categoryName: string;
+      quantity: number;
+      /** @description Giá vốn bình quân (gộp các kho trong phạm vi) */
+      averageCost: number;
+      value: number;
+      /** @description Tỷ trọng trong tổng giá trị (%) */
+      share: number;
+    };
+    ValueGroup: {
+      id: string;
+      name: string;
+      quantity: number;
+      value: number;
+      share: number;
+    };
+    StockValuePage: components['schemas']['PageMeta'] & {
+      items: components['schemas']['StockValueRow'][];
+      totalQuantity: number;
+      totalValue: number;
+      byCategory: components['schemas']['ValueGroup'][];
+      byWarehouse: components['schemas']['ValueGroup'][];
+    };
+    /**
+     * @description ISSUE_VALUE: giá vốn hàng xuất trong kỳ; STOCK_VALUE: giá trị tồn hiện tại
+     * @enum {string}
+     */
+    AbcBasis: 'ISSUE_VALUE' | 'STOCK_VALUE';
+    /** @enum {string} */
+    AbcClass: 'A' | 'B' | 'C';
+    AbcRow: {
+      rank: number;
+      productId: string;
+      sku: string;
+      productName: string;
+      categoryName: string;
+      quantity: number;
+      value: number;
+      /** @description % */
+      share: number;
+      /** @description % tích lũy */
+      cumulativeShare: number;
+      abcClass: components['schemas']['AbcClass'];
+    };
+    AbcClassSummary: {
+      abcClass: components['schemas']['AbcClass'];
+      productCount: number;
+      /** @description % số mặt hàng */
+      productShare: number;
+      value: number;
+      /** @description % giá trị */
+      valueShare: number;
+    };
+    AbcReport: components['schemas']['PageMeta'] & {
+      basis: components['schemas']['AbcBasis'];
+      /** Format: date */
+      from: string;
+      /** Format: date */
+      to: string;
+      thresholdA: number;
+      thresholdB: number;
+      totalValue: number;
+      items: components['schemas']['AbcRow'][];
+      classes: components['schemas']['AbcClassSummary'][];
+      /** @description % tích lũy theo hạng (toàn bộ mặt hàng, không phân trang) — vẽ đường Pareto */
+      pareto: number[];
+    };
   };
   responses: {
     /** @description Chưa đăng nhập hoặc access token hết hạn (`UNAUTHORIZED` / `TOKEN_EXPIRED`) */
@@ -2153,6 +2664,12 @@ export interface components {
     FromDate: string;
     /** @description Đến ngày (bao gồm), `YYYY-MM-DD` */
     ToDate: string;
+    /** @description Từ ngày (bao gồm), `YYYY-MM-DD` */
+    ReportFromDate: string;
+    /** @description Đến ngày (bao gồm), `YYYY-MM-DD` */
+    ReportToDate: string;
+    /** @description Ngưỡng "sắp hết hạn" — số ngày còn lại tối đa */
+    ExpiringDays: number;
   };
   requestBodies: never;
   headers: never;
@@ -2256,6 +2773,34 @@ export type AuditEntityType = components['schemas']['AuditEntityType'];
 export type AuditChange = components['schemas']['AuditChange'];
 export type AuditLog = components['schemas']['AuditLog'];
 export type AuditLogPage = components['schemas']['AuditLogPage'];
+export type ExpiryStatus = components['schemas']['ExpiryStatus'];
+export type StockPick = components['schemas']['StockPick'];
+export type StockLot = components['schemas']['StockLot'];
+export type StockLotPage = components['schemas']['StockLotPage'];
+export type SerialStatus = components['schemas']['SerialStatus'];
+export type SerialUnit = components['schemas']['SerialUnit'];
+export type SerialUnitPage = components['schemas']['SerialUnitPage'];
+export type AllocationPreviewRequest = components['schemas']['AllocationPreviewRequest'];
+export type AllocationPreviewLine = components['schemas']['AllocationPreviewLine'];
+export type AllocationPreview = components['schemas']['AllocationPreview'];
+export type AlertType = components['schemas']['AlertType'];
+export type AlertSeverity = components['schemas']['AlertSeverity'];
+export type Alert = components['schemas']['Alert'];
+export type AlertPage = components['schemas']['AlertPage'];
+export type AlertSummary = components['schemas']['AlertSummary'];
+export type StockCardEntry = components['schemas']['StockCardEntry'];
+export type StockCard = components['schemas']['StockCard'];
+export type InventorySummaryRow = components['schemas']['InventorySummaryRow'];
+export type InventorySummaryTotals = components['schemas']['InventorySummaryTotals'];
+export type InventorySummaryPage = components['schemas']['InventorySummaryPage'];
+export type StockValueRow = components['schemas']['StockValueRow'];
+export type ValueGroup = components['schemas']['ValueGroup'];
+export type StockValuePage = components['schemas']['StockValuePage'];
+export type AbcBasis = components['schemas']['AbcBasis'];
+export type AbcClass = components['schemas']['AbcClass'];
+export type AbcRow = components['schemas']['AbcRow'];
+export type AbcClassSummary = components['schemas']['AbcClassSummary'];
+export type AbcReport = components['schemas']['AbcReport'];
 export type ResponseUnauthorized = components['responses']['Unauthorized'];
 export type ResponseForbidden = components['responses']['Forbidden'];
 export type ResponseNotFound = components['responses']['NotFound'];
@@ -2271,6 +2816,9 @@ export type ParameterDocumentStatusFilter = components['parameters']['DocumentSt
 export type ParameterWarehouseFilter = components['parameters']['WarehouseFilter'];
 export type ParameterFromDate = components['parameters']['FromDate'];
 export type ParameterToDate = components['parameters']['ToDate'];
+export type ParameterReportFromDate = components['parameters']['ReportFromDate'];
+export type ParameterReportToDate = components['parameters']['ReportToDate'];
+export type ParameterExpiringDays = components['parameters']['ExpiringDays'];
 export type $defs = Record<string, never>;
 export interface operations {
   login: {
@@ -3577,6 +4125,33 @@ export interface operations {
       422: components['responses']['ValidationError'];
     };
   };
+  previewIssueAllocation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['AllocationPreviewRequest'];
+      };
+    };
+    responses: {
+      /** @description Phân bổ đề xuất theo dòng */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AllocationPreview'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      422: components['responses']['ValidationError'];
+    };
+  };
   listStockMovements: {
     parameters: {
       query?: {
@@ -3591,6 +4166,7 @@ export interface operations {
         productId?: string;
         warehouseId?: components['parameters']['WarehouseFilter'];
         type?: components['schemas']['MovementType'];
+        lotNumber?: string;
         /** @description Từ ngày (bao gồm), `YYYY-MM-DD` */
         from?: components['parameters']['FromDate'];
         /** @description Đến ngày (bao gồm), `YYYY-MM-DD` */
@@ -3941,6 +4517,101 @@ export interface operations {
       };
       401: components['responses']['Unauthorized'];
       403: components['responses']['Forbidden'];
+    };
+  };
+  listStockLots: {
+    parameters: {
+      query?: {
+        /** @description Số trang, bắt đầu từ 1 */
+        page?: components['parameters']['Page'];
+        /** @description Số bản ghi mỗi trang */
+        size?: components['parameters']['Size'];
+        /** @description Sắp xếp dạng `field,asc|desc`, ví dụ `name,asc` */
+        sort?: components['parameters']['Sort'];
+        /** @description Từ khóa tìm kiếm (không phân biệt hoa thường, dấu) */
+        q?: components['parameters']['Q'];
+        warehouseId?: components['parameters']['WarehouseFilter'];
+        productId?: string;
+        expiryStatus?: components['schemas']['ExpiryStatus'];
+        /** @description Ngưỡng "sắp hết hạn" — số ngày còn lại tối đa */
+        days?: components['parameters']['ExpiringDays'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Trang tồn theo lô */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StockLotPage'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  listSerials: {
+    parameters: {
+      query?: {
+        /** @description Số trang, bắt đầu từ 1 */
+        page?: components['parameters']['Page'];
+        /** @description Số bản ghi mỗi trang */
+        size?: components['parameters']['Size'];
+        /** @description Sắp xếp dạng `field,asc|desc`, ví dụ `name,asc` */
+        sort?: components['parameters']['Sort'];
+        /** @description Từ khóa tìm kiếm (không phân biệt hoa thường, dấu) */
+        q?: components['parameters']['Q'];
+        warehouseId?: components['parameters']['WarehouseFilter'];
+        productId?: string;
+        status?: components['schemas']['SerialStatus'];
+        locationId?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Trang serial */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SerialUnitPage'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  getSerial: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        serialNumber: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Serial */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SerialUnit'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      404: components['responses']['NotFound'];
     };
   };
   listTransfers: {
@@ -4764,6 +5435,213 @@ export interface operations {
       401: components['responses']['Unauthorized'];
       403: components['responses']['Forbidden'];
       404: components['responses']['NotFound'];
+    };
+  };
+  listAlerts: {
+    parameters: {
+      query?: {
+        /** @description Số trang, bắt đầu từ 1 */
+        page?: components['parameters']['Page'];
+        /** @description Số bản ghi mỗi trang */
+        size?: components['parameters']['Size'];
+        /** @description Sắp xếp dạng `field,asc|desc`, ví dụ `name,asc` */
+        sort?: components['parameters']['Sort'];
+        /** @description Từ khóa tìm kiếm (không phân biệt hoa thường, dấu) */
+        q?: components['parameters']['Q'];
+        warehouseId?: components['parameters']['WarehouseFilter'];
+        type?: components['schemas']['AlertType'];
+        /** @description Ngưỡng "sắp hết hạn" — số ngày còn lại tối đa */
+        days?: components['parameters']['ExpiringDays'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Trang cảnh báo */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AlertPage'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  getAlertSummary: {
+    parameters: {
+      query?: {
+        warehouseId?: components['parameters']['WarehouseFilter'];
+        /** @description Ngưỡng "sắp hết hạn" — số ngày còn lại tối đa */
+        days?: components['parameters']['ExpiringDays'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Số cảnh báo */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AlertSummary'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  getStockCard: {
+    parameters: {
+      query: {
+        productId: string;
+        warehouseId?: components['parameters']['WarehouseFilter'];
+        lotNumber?: string;
+        /** @description Từ ngày (bao gồm), `YYYY-MM-DD` */
+        from: components['parameters']['ReportFromDate'];
+        /** @description Đến ngày (bao gồm), `YYYY-MM-DD` */
+        to: components['parameters']['ReportToDate'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Thẻ kho */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StockCard'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      422: components['responses']['ValidationError'];
+    };
+  };
+  getInventorySummary: {
+    parameters: {
+      query: {
+        /** @description Số trang, bắt đầu từ 1 */
+        page?: components['parameters']['Page'];
+        /** @description Số bản ghi mỗi trang */
+        size?: components['parameters']['Size'];
+        /** @description Sắp xếp dạng `field,asc|desc`, ví dụ `name,asc` */
+        sort?: components['parameters']['Sort'];
+        /** @description Từ khóa tìm kiếm (không phân biệt hoa thường, dấu) */
+        q?: components['parameters']['Q'];
+        warehouseId?: components['parameters']['WarehouseFilter'];
+        categoryId?: string;
+        /** @description Chỉ dòng có phát sinh hoặc còn tồn (mặc định true) */
+        onlyActive?: boolean;
+        /** @description Từ ngày (bao gồm), `YYYY-MM-DD` */
+        from: components['parameters']['ReportFromDate'];
+        /** @description Đến ngày (bao gồm), `YYYY-MM-DD` */
+        to: components['parameters']['ReportToDate'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Trang NXT kèm tổng cộng */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['InventorySummaryPage'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      422: components['responses']['ValidationError'];
+    };
+  };
+  getStockValue: {
+    parameters: {
+      query?: {
+        /** @description Số trang, bắt đầu từ 1 */
+        page?: components['parameters']['Page'];
+        /** @description Số bản ghi mỗi trang */
+        size?: components['parameters']['Size'];
+        /** @description Sắp xếp dạng `field,asc|desc`, ví dụ `name,asc` */
+        sort?: components['parameters']['Sort'];
+        /** @description Từ khóa tìm kiếm (không phân biệt hoa thường, dấu) */
+        q?: components['parameters']['Q'];
+        warehouseId?: components['parameters']['WarehouseFilter'];
+        categoryId?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Trang giá trị tồn kèm tổng hợp theo nhóm hàng và kho */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['StockValuePage'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  getAbcAnalysis: {
+    parameters: {
+      query: {
+        /** @description Số trang, bắt đầu từ 1 */
+        page?: components['parameters']['Page'];
+        /** @description Số bản ghi mỗi trang */
+        size?: components['parameters']['Size'];
+        /** @description Từ khóa tìm kiếm (không phân biệt hoa thường, dấu) */
+        q?: components['parameters']['Q'];
+        warehouseId?: components['parameters']['WarehouseFilter'];
+        basis?: components['schemas']['AbcBasis'];
+        abcClass?: components['schemas']['AbcClass'];
+        /** @description Ngưỡng tích lũy nhóm A (%) */
+        thresholdA?: number;
+        /** @description Ngưỡng tích lũy nhóm B (%), lớn hơn thresholdA */
+        thresholdB?: number;
+        /** @description Từ ngày (bao gồm), `YYYY-MM-DD` */
+        from: components['parameters']['ReportFromDate'];
+        /** @description Đến ngày (bao gồm), `YYYY-MM-DD` */
+        to: components['parameters']['ReportToDate'];
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Phân tích ABC (dòng theo hạng, tổng hợp nhóm, đường Pareto) */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AbcReport'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      422: components['responses']['ValidationError'];
     };
   };
 }
