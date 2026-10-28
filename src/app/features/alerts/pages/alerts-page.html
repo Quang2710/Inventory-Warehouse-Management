@@ -1,0 +1,130 @@
+<app-page-header [heading]="'alerts.title' | t" [subtitle]="'alerts.subtitle' | t">
+  <div actions class="doc-actions">
+    <app-export-menu
+      [busy]="exporting()"
+      [disabled]="list.total() === 0"
+      (export)="export($event)"
+    />
+  </div>
+</app-page-header>
+
+<div class="tiles" role="group" [attr.aria-label]="'alerts.fields.type' | t">
+  @for (type of types; track type) {
+    <button
+      type="button"
+      class="tile"
+      [class.danger]="typeLabels[type].tone === 'danger'"
+      [attr.aria-pressed]="list.params().filters.type === type"
+      (click)="toggleType(type)"
+    >
+      <mat-icon aria-hidden="true">{{ typeLabels[type].icon }}</mat-icon>
+      <span>
+        <span class="count">{{ counts()[type] | number }}</span>
+        {{ typeLabels[type].labelKey | t }}
+      </span>
+    </button>
+  }
+</div>
+
+<app-data-table
+  tableId="alerts"
+  [columns]="columns"
+  [rows]="list.items()"
+  [total]="list.total()"
+  [pageIndex]="list.pageIndex()"
+  [pageSize]="list.params().size"
+  [sort]="list.params().sort"
+  [loading]="list.loading()"
+  [loaded]="list.loaded()"
+  [error]="list.error()"
+  [filtered]="list.hasFilters()"
+  [ariaLabel]="'alerts.title' | t"
+  emptyIcon="notifications_off"
+  (page)="list.setPage($event.pageIndex, $event.pageSize)"
+  (sortChange)="list.setSort($event)"
+  (retry)="list.reload()"
+>
+  <ng-container filters>
+    <app-search-field
+      [value]="list.params().q"
+      [placeholder]="'alerts.searchPlaceholder' | t"
+      (queryChange)="list.setQuery($event)"
+    />
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>{{ 'stock.fields.warehouse' | t }}</mat-label>
+      <mat-select
+        [value]="list.params().filters.warehouseId"
+        (valueChange)="list.setFilter('warehouseId', $event)"
+      >
+        <mat-option [value]="null">{{ 'common.all' | t }}</mat-option>
+        @for (warehouse of warehouses.items(); track warehouse.id) {
+          <mat-option [value]="warehouse.id">{{ warehouse.name }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>{{ 'lots.expiringWithin' | t }}</mat-label>
+      <mat-select [value]="'' + days()" (valueChange)="setDays($event)">
+        @for (option of dayOptions; track option) {
+          <mat-option [value]="'' + option">{{ 'lots.days' | t: { days: option } }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  </ng-container>
+
+  <ng-template appCell="type" [appCellOf]="list.items()" let-row>
+    <span class="type">
+      <mat-icon aria-hidden="true">{{ typeLabels[row.type].icon }}</mat-icon>
+      <app-status-chip [status]="typeLabels[row.type]" />
+    </span>
+  </ng-template>
+  <ng-template appCell="sku" [appCellOf]="list.items()" let-row
+    ><span class="mono">{{ row.sku }}</span></ng-template
+  >
+  <ng-template appCell="quantity" [appCellOf]="list.items()" let-row>
+    {{ row.quantity | number }} {{ row.unit }}
+  </ng-template>
+  <ng-template appCell="detail" [appCellOf]="list.items()" let-row>
+    @if (row.type === 'LOW_STOCK' || row.type === 'OUT_OF_STOCK') {
+      {{
+        'alerts.minStockDetail'
+          | t: { min: row.minStock ?? 0, suggested: row.suggestedQuantity ?? 0 }
+      }}
+    } @else {
+      <span class="mono">{{ row.lotNumber ?? '—' }}</span> ·
+      <app-expiry-badge [date]="row.expiryDate" />
+    }
+  </ng-template>
+  <ng-template appCell="locationCode" [appCellOf]="list.items()" let-row
+    ><span class="mono">{{ row.locationCode ?? '—' }}</span></ng-template
+  >
+  <ng-template appCell="value" [appCellOf]="list.items()" let-row>{{
+    row.value | currency: 'VND' : 'symbol' : '1.0-0'
+  }}</ng-template>
+  <ng-template appCell="actions" [appCellOf]="list.items()" let-row>
+    @if ((row.type === 'LOW_STOCK' || row.type === 'OUT_OF_STOCK') && canReceive) {
+      <a
+        mat-button
+        [routerLink]="['/goods-receipts/new']"
+        [queryParams]="{ productId: row.productId }"
+        [matTooltip]="'alerts.actions.receiveHint' | t"
+        >{{ 'alerts.actions.receive' | t }}</a
+      >
+    }
+    @if (row.type === 'EXPIRED' && canIssue) {
+      <a
+        mat-button
+        class="doc-danger"
+        [routerLink]="['/goods-issues/new']"
+        [queryParams]="{ productId: row.productId, reason: 'DAMAGED' }"
+        [matTooltip]="'alerts.actions.disposeHint' | t"
+        >{{ 'alerts.actions.dispose' | t }}</a
+      >
+    }
+    @if (row.type === 'EXPIRING') {
+      <a mat-button [routerLink]="['/stock/lots']" [queryParams]="{ q: row.sku }">{{
+        'alerts.actions.viewLots' | t
+      }}</a>
+    }
+  </ng-template>
+</app-data-table>
