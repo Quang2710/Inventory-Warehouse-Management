@@ -1,0 +1,188 @@
+@let issue = current();
+<app-page-header
+  [heading]="issue.code"
+  [subtitle]="issue.warehouseName + ' · ' + issue.customerName"
+>
+  <div actions class="doc-actions">
+    <app-status-chip [status]="statusLabels[issue.status]" />
+    <button
+      mat-stroked-button
+      type="button"
+      [matMenuTriggerFor]="printMenu"
+      [disabled]="printing()"
+    >
+      <mat-icon>print</mat-icon>{{ 'documents.actions.print' | t }}
+    </button>
+    <mat-menu #printMenu="matMenu">
+      <button mat-menu-item type="button" (click)="printIssue()">
+        <mat-icon>description</mat-icon><span>{{ 'issues.printIssue' | t }}</span>
+      </button>
+      @if (canPick()) {
+        <button mat-menu-item type="button" (click)="printPickingList()">
+          <mat-icon>checklist</mat-icon><span>{{ 'issues.printPicking' | t }}</span>
+        </button>
+      }
+    </mat-menu>
+    @if (editable()) {
+      <a mat-stroked-button [routerLink]="['/goods-issues', issue.id, 'edit']">
+        <mat-icon>edit</mat-icon>{{ 'common.edit' | t }}
+      </a>
+      <button
+        mat-flat-button
+        type="button"
+        [disabled]="workflow.busy()"
+        (click)="workflow.submit()"
+      >
+        <mat-icon>send</mat-icon>{{ 'documents.actions.submit' | t }}
+      </button>
+    }
+    @if (deletable()) {
+      <button
+        mat-button
+        type="button"
+        class="doc-danger"
+        [disabled]="workflow.busy()"
+        (click)="workflow.remove()"
+      >
+        <mat-icon>delete</mat-icon>{{ 'common.delete' | t }}
+      </button>
+    }
+    @if (decidable()) {
+      <button
+        mat-button
+        type="button"
+        class="doc-danger"
+        [disabled]="workflow.busy()"
+        (click)="workflow.reject()"
+      >
+        <mat-icon>block</mat-icon>{{ 'documents.actions.reject' | t }}
+      </button>
+      <button
+        mat-flat-button
+        type="button"
+        [disabled]="workflow.busy()"
+        (click)="workflow.approve()"
+      >
+        <mat-icon>task_alt</mat-icon>{{ 'documents.actions.approve' | t }}
+      </button>
+    }
+    @if (cancellable()) {
+      <button
+        mat-button
+        type="button"
+        class="doc-danger"
+        [disabled]="workflow.busy()"
+        (click)="workflow.cancel()"
+      >
+        <mat-icon>cancel</mat-icon>{{ 'documents.actions.cancel' | t }}
+      </button>
+    }
+  </div>
+</app-page-header>
+
+<div class="doc-layout">
+  <section class="doc-card">
+    @if (issue.status === 'REJECTED' && issue.rejectedReason) {
+      <p class="doc-banner doc-banner--error" role="status">
+        <mat-icon aria-hidden="true">block</mat-icon>
+        {{ 'documents.rejectedBanner' | t: { reason: issue.rejectedReason } }}
+      </p>
+    }
+    @if (issue.status === 'CANCELLED') {
+      <p class="doc-banner doc-banner--warn" role="status">
+        <mat-icon aria-hidden="true">undo</mat-icon>
+        {{ 'documents.cancelledBanner' | t: { reason: issue.cancelReason ?? '' } }}
+      </p>
+    }
+    @if (issue.status !== 'APPROVED' && issue.status !== 'CANCELLED') {
+      <p class="doc-banner doc-banner--info" role="note">
+        <mat-icon aria-hidden="true">info</mat-icon>{{ 'issues.picksAfterApproval' | t }}
+      </p>
+    }
+
+    <dl class="doc-facts">
+      <dt>{{ 'issues.fields.warehouse' | t }}</dt>
+      <dd>{{ issue.warehouseName }}</dd>
+      <dt>{{ 'issues.fields.issueDate' | t }}</dt>
+      <dd>{{ issue.issueDate | date }}</dd>
+      <dt>{{ 'issues.fields.reason' | t }}</dt>
+      <dd>{{ reasonLabels[issue.reason] | t }}</dd>
+      <dt>{{ 'issues.fields.customer' | t }}</dt>
+      <dd>{{ issue.customerName }}</dd>
+      <dt>{{ 'issues.fields.referenceNo' | t }}</dt>
+      <dd class="mono">{{ issue.referenceNo ?? '—' }}</dd>
+      @if (issue.note) {
+        <dt>{{ 'common.note' | t }}</dt>
+        <dd>{{ issue.note }}</dd>
+      }
+    </dl>
+
+    <div class="doc-table-wrap">
+      <table class="doc-table">
+        <caption class="visually-hidden">
+          {{
+            'documents.lines' | t
+          }}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">{{ 'documents.fields.product' | t }}</th>
+            <th scope="col">{{ 'issues.fields.picks' | t }}</th>
+            <th scope="col" class="num">{{ 'common.quantity' | t }}</th>
+            <th scope="col" class="num">{{ 'issues.fields.unitPrice' | t }}</th>
+            <th scope="col" class="num">{{ 'documents.fields.amount' | t }}</th>
+            @if (issue.status === 'APPROVED' || issue.status === 'CANCELLED') {
+              <th scope="col" class="num">{{ 'issues.fields.unitCost' | t }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (line of issue.lines; track line.id; let index = $index) {
+            <tr [class.row--error]="workflow.lineErrors()[index]">
+              <td>{{ index + 1 }}</td>
+              <td>
+                <span class="mono">{{ line.sku }}</span> {{ line.productName }}
+                @if (line.lotNumber) {
+                  <div class="doc-muted">
+                    {{ 'issues.fields.requestedLot' | t: { lot: line.lotNumber } }}
+                  </div>
+                }
+                @if (line.serialNumbers?.length) {
+                  <div class="doc-chips">
+                    @for (serial of line.serialNumbers; track serial) {
+                      <span>{{ serial }}</span>
+                    }
+                  </div>
+                }
+                @for (message of workflow.lineErrors()[index]; track message) {
+                  <span class="doc-line-error" role="alert">{{ message }}</span>
+                }
+              </td>
+              <td><app-stock-picks [picks]="line.picks" [showDays]="false" /></td>
+              <td class="num">{{ line.quantity | number }} {{ line.unit }}</td>
+              <td class="num">{{ line.unitPrice | currency: 'VND' : 'symbol' : '1.0-0' }}</td>
+              <td class="num">{{ line.amount | currency: 'VND' : 'symbol' : '1.0-0' }}</td>
+              @if (issue.status === 'APPROVED' || issue.status === 'CANCELLED') {
+                <td class="num">{{ line.unitCost ?? 0 | currency: 'VND' : 'symbol' : '1.0-0' }}</td>
+              }
+            </tr>
+          }
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3">{{ 'common.total' | t }}</td>
+            <td class="num">{{ issue.totalQuantity | number }}</td>
+            <td></td>
+            <td class="num">{{ issue.totalAmount | currency: 'VND' : 'symbol' : '1.0-0' }}</td>
+            @if (issue.status === 'APPROVED' || issue.status === 'CANCELLED') {
+              <td class="num">{{ costTotal() | currency: 'VND' : 'symbol' : '1.0-0' }}</td>
+            }
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </section>
+
+  <app-document-timeline [document]="issue" />
+</div>

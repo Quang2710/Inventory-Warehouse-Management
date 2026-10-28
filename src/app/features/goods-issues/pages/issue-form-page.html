@@ -1,0 +1,240 @@
+<app-page-header [heading]="heading()" [subtitle]="'issues.formSubtitle' | t" />
+
+<form [formGroup]="form" (ngSubmit)="save(false)" novalidate class="doc-form">
+  @if (issue()?.status === 'REJECTED') {
+    <p class="doc-banner doc-banner--error" role="status">
+      <mat-icon aria-hidden="true">block</mat-icon>
+      {{ 'documents.rejectedBanner' | t: { reason: issue()?.rejectedReason ?? '' } }}
+    </p>
+  }
+
+  <section class="doc-card doc-header-grid">
+    <mat-form-field>
+      <mat-label>{{ 'issues.fields.warehouse' | t }}</mat-label>
+      <mat-select formControlName="warehouseId">
+        @for (warehouse of warehouses.active(); track warehouse.id) {
+          <mat-option [value]="warehouse.id"
+            >{{ warehouse.code }} — {{ warehouse.name }}</mat-option
+          >
+        }
+      </mat-select>
+      <mat-error>{{ form.controls.warehouseId | fieldError }}</mat-error>
+    </mat-form-field>
+    <mat-form-field>
+      <mat-label>{{ 'issues.fields.reason' | t }}</mat-label>
+      <mat-select formControlName="reason">
+        @for (reason of reasons; track reason) {
+          <mat-option [value]="reason">{{ reasonLabels[reason] | t }}</mat-option>
+        }
+      </mat-select>
+      @if (reason() === 'DAMAGED') {
+        <mat-hint>{{ 'issues.damagedHint' | t }}</mat-hint>
+      }
+    </mat-form-field>
+    @if (partnerOptions().length) {
+      <mat-form-field>
+        <mat-label>{{
+          (reason() === 'SALE' ? 'issues.fields.customerSelect' : 'issues.fields.supplierSelect')
+            | t
+        }}</mat-label>
+        <mat-select formControlName="partnerId">
+          <mat-option [value]="null">{{ 'issues.fields.otherReceiver' | t }}</mat-option>
+          @for (partner of partnerOptions(); track partner.id) {
+            <mat-option [value]="partner.id">{{ partner.code }} — {{ partner.name }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    }
+    <mat-form-field [class.wide]="!partnerOptions().length">
+      <mat-label>{{ 'issues.fields.customer' | t }}</mat-label>
+      <input matInput formControlName="customerName" autocomplete="off" />
+      <mat-error>{{ form.controls.customerName | fieldError }}</mat-error>
+    </mat-form-field>
+    <mat-form-field>
+      <mat-label>{{ 'issues.fields.issueDate' | t }}</mat-label>
+      <input matInput [matDatepicker]="issuePicker" formControlName="issueDate" />
+      <mat-hint>dd/MM/yyyy</mat-hint>
+      <mat-datepicker-toggle matIconSuffix [for]="issuePicker" />
+      <mat-datepicker #issuePicker />
+      <mat-error>{{ form.controls.issueDate | fieldError }}</mat-error>
+    </mat-form-field>
+    <mat-form-field>
+      <mat-label>{{ 'issues.fields.referenceNo' | t }}</mat-label>
+      <input matInput formControlName="referenceNo" autocomplete="off" />
+      <mat-error>{{ form.controls.referenceNo | fieldError }}</mat-error>
+    </mat-form-field>
+    <mat-form-field class="wide">
+      <mat-label>{{ 'common.note' | t }}</mat-label>
+      <textarea matInput formControlName="note" rows="1"></textarea>
+      <mat-error>{{ form.controls.note | fieldError }}</mat-error>
+    </mat-form-field>
+  </section>
+
+  <section class="doc-card">
+    <header class="doc-lines-header">
+      <h2>{{ 'documents.lines' | t }}</h2>
+      <div class="doc-actions">
+        <mat-form-field subscriptSizing="dynamic" class="scan-field">
+          <mat-label>{{ 'documents.scanInput' | t }}</mat-label>
+          <input
+            matInput
+            [formControl]="scanInput"
+            (keydown.enter)="$event.preventDefault(); onScanInput()"
+            autocomplete="off"
+            enterkeyhint="done"
+          />
+          <button
+            mat-icon-button
+            matIconSuffix
+            type="button"
+            (click)="scanWithCamera()"
+            [disabled]="scanning()"
+            [attr.aria-label]="'scanner.title' | t"
+            [matTooltip]="'scanner.title' | t"
+          >
+            <mat-icon>photo_camera</mat-icon>
+          </button>
+        </mat-form-field>
+        <button
+          mat-stroked-button
+          type="button"
+          (click)="addLine()"
+          [matTooltip]="'documents.addLineShortcut' | t"
+        >
+          <mat-icon>add</mat-icon>{{ 'documents.addLine' | t }}
+        </button>
+      </div>
+    </header>
+    <p class="doc-banner doc-banner--info">
+      <mat-icon aria-hidden="true">info</mat-icon>{{ 'issues.fefoHint' | t }}
+    </p>
+    @if (previewing()) {
+      <mat-progress-bar mode="indeterminate" [attr.aria-label]="'issues.previewing' | t" />
+    }
+
+    @if (lines.length === 0) {
+      <p class="doc-empty" [class.error]="lines.touched">{{ 'documents.noLines' | t }}</p>
+    }
+
+    <ol class="doc-lines" formArrayName="lines">
+      @for (line of lines.controls; track line; let index = $index) {
+        @let product = line.controls.product.value;
+        @let suggestion = preview()[index];
+        <li class="doc-line" [formGroupName]="index">
+          <span class="doc-line__no" aria-hidden="true">{{ index + 1 }}</span>
+          <app-product-autocomplete
+            class="line__product"
+            [control]="line.controls.product"
+            [label]="'documents.fields.product' | t"
+          />
+          <mat-form-field>
+            <mat-label>{{ 'common.quantity' | t }}</mat-label>
+            <input matInput type="number" inputmode="numeric" min="1" formControlName="quantity" />
+            @if (product?.unit) {
+              <span matTextSuffix>{{ product?.unit }}</span>
+            }
+            <mat-error>{{ line.controls.quantity | fieldError }}</mat-error>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>{{ 'issues.fields.unitPrice' | t }}</mat-label>
+            <input matInput type="number" inputmode="numeric" min="0" formControlName="unitPrice" />
+            <span matTextSuffix>₫</span>
+            <mat-error>{{ line.controls.unitPrice | fieldError }}</mat-error>
+          </mat-form-field>
+          <div class="doc-line__stat">
+            <span class="label">{{ 'issues.fields.available' | t }}</span>
+            <span class="value" [class.doc-danger]="suggestion && suggestion.shortage > 0">{{
+              suggestion ? (suggestion.available | number) : '—'
+            }}</span>
+          </div>
+          <button
+            mat-icon-button
+            type="button"
+            class="doc-line__remove"
+            (click)="removeLine(index)"
+            [attr.aria-label]="'documents.removeLine' | t"
+            [matTooltip]="'documents.removeLine' | t"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+
+          <div class="doc-line__extra">
+            @if (product && (product.trackLot || product.trackExpiry)) {
+              <mat-form-field>
+                <mat-label>{{ 'lots.lotNumber' | t }}</mat-label>
+                <mat-select formControlName="lotNumber">
+                  <mat-option [value]="null">{{ 'issues.fields.autoLot' | t }}</mat-option>
+                  @for (lot of lotsFor(line); track lot.lotNumber) {
+                    <mat-option
+                      [value]="lot.lotNumber"
+                      [disabled]="lot.expired && reason() !== 'DAMAGED'"
+                    >
+                      {{ lot.lotNumber }} · {{ lot.expiryDate ? (lot.expiryDate | date) : '—' }} ·
+                      {{ lot.quantity | number }}
+                      @if (lot.expired) {
+                        ({{ 'expiry.EXPIRED' | t }})
+                      }
+                    </mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+            }
+            @if (product?.trackSerial) {
+              <div class="serials">
+                <button mat-stroked-button type="button" (click)="editSerials(line)">
+                  <mat-icon>qr_code_2</mat-icon>
+                  {{
+                    line.controls.serialNumbers.value.length
+                      ? ('serials.entered'
+                        | t
+                          : {
+                              count: line.controls.serialNumbers.value.length,
+                              quantity: line.controls.quantity.value,
+                            })
+                      : ('issues.fields.autoSerial' | t)
+                  }}
+                </button>
+                @if (line.controls.serialNumbers.invalid) {
+                  <span class="doc-line-error" role="alert">{{
+                    line.controls.serialNumbers | fieldError
+                  }}</span>
+                }
+              </div>
+            }
+            @if (suggestion) {
+              <div class="suggest" aria-live="polite">
+                <span class="doc-muted">{{ 'issues.suggestedPicks' | t }}:</span>
+                <app-stock-picks [picks]="suggestion.picks" />
+                @if (suggestion.message) {
+                  <span [class.shortage]="suggestion.shortage > 0">{{ suggestion.message }}</span>
+                }
+              </div>
+            }
+          </div>
+        </li>
+      }
+    </ol>
+
+    <div class="totals" aria-live="polite">
+      <span>{{ 'documents.fields.totalQuantity' | t }}: {{ totals().quantity }}</span>
+      <span
+        >{{ 'issues.fields.totalAmount' | t }}:
+        {{ totals().amount | currency: 'VND' : 'symbol' : '1.0-0' }}</span
+      >
+    </div>
+  </section>
+
+  <div class="doc-form-actions">
+    <a mat-button [routerLink]="issue() ? ['/goods-issues', issue()!.id] : ['/goods-issues']">{{
+      'common.cancel' | t
+    }}</a>
+    <button mat-stroked-button type="submit" [disabled]="saving()">
+      <mat-icon>save</mat-icon>
+      {{ (saving() ? 'common.saving' : 'documents.saveDraft') | t }}
+    </button>
+    <button mat-flat-button type="button" [disabled]="saving()" (click)="save(true)">
+      <mat-icon>send</mat-icon>
+      {{ 'documents.saveAndSubmit' | t }}
+    </button>
+  </div>
+</form>
