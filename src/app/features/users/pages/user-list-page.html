@@ -57,14 +57,16 @@
     </mat-form-field>
   </ng-container>
 
-  <ng-template appCell="username" let-row>
+  <ng-template appCell="username" [appCellOf]="list.items()" let-row>
     <span class="mono">{{ row.username }}</span>
     @if (row.id === auth.user()?.id) {
       <span class="you">({{ 'users.self' | t }})</span>
     }
   </ng-template>
-  <ng-template appCell="role" let-row>{{ roleLabels[$any(row.role)] | t }}</ng-template>
-  <ng-template appCell="warehouseIds" let-row>
+  <ng-template appCell="role" [appCellOf]="list.items()" let-row>{{
+    roleLabels[row.role] | t
+  }}</ng-template>
+  <ng-template appCell="warehouseIds" [appCellOf]="list.items()" let-row>
     @if (row.warehouseIds.length === 0) {
       {{ 'users.fields.allWarehouses' | t }}
     } @else {
@@ -75,13 +77,13 @@
       </span>
     }
   </ng-template>
-  <ng-template appCell="status" let-row>
-    <app-status-chip [status]="statusLabels[$any(row.status)]" />
+  <ng-template appCell="status" [appCellOf]="list.items()" let-row>
+    <app-status-chip [status]="statusLabels[row.status]" />
   </ng-template>
-  <ng-template appCell="lastLoginAt" let-row>
+  <ng-template appCell="lastLoginAt" [appCellOf]="list.items()" let-row>
     {{ row.lastLoginAt ? (row.lastLoginAt | date: 'dd/MM/yyyy HH:mm') : '—' }}
   </ng-template>
-  <ng-template appCell="actions" let-row>
+  <ng-template appCell="actions" [appCellOf]="list.items()" let-row>
     <button
       *hasPermission="'user:write'"
       mat-icon-button

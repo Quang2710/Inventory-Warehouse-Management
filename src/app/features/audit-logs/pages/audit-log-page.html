@@ -74,18 +74,16 @@
     </mat-form-field>
   </ng-container>
 
-  <ng-template appCell="occurredAt" let-row>{{
+  <ng-template appCell="occurredAt" [appCellOf]="list.items()" let-row>{{
     row.occurredAt | date: 'dd/MM/yyyy HH:mm'
   }}</ng-template>
-  <ng-template appCell="action" let-row>
-    <span class="action" [class]="'action--' + row.action">{{
-      actionLabels[$any(row.action)] | t
-    }}</span>
+  <ng-template appCell="action" [appCellOf]="list.items()" let-row>
+    <span class="action" [class]="'action--' + row.action">{{ actionLabels[row.action] | t }}</span>
   </ng-template>
-  <ng-template appCell="entityType" let-row>{{
-    entityLabels[$any(row.entityType)] | t
+  <ng-template appCell="entityType" [appCellOf]="list.items()" let-row>{{
+    entityLabels[row.entityType] | t
   }}</ng-template>
-  <ng-template appCell="entityLabel" let-row>
+  <ng-template appCell="entityLabel" [appCellOf]="list.items()" let-row>
     @if (entityLink(row); as link) {
       <a class="mono" [routerLink]="link" (click)="$event.stopPropagation()">{{
         row.entityLabel
@@ -94,7 +92,7 @@
       <span class="mono">{{ row.entityLabel ?? '—' }}</span>
     }
   </ng-template>
-  <ng-template appCell="summary" let-row>
+  <ng-template appCell="summary" [appCellOf]="list.items()" let-row>
     <span class="summary" [title]="row.summary">{{ row.summary }}</span>
   </ng-template>
 </app-data-table>

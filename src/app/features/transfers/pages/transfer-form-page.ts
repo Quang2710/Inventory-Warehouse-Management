@@ -37,7 +37,7 @@ import { NotificationService } from '../../../core/notification/notification.ser
 import { ProductsApi } from '../../../shared/data-access/products.api';
 import { WarehouseLookup } from '../../../shared/data-access/warehouse-lookup';
 import { WarehousesApi } from '../../../shared/data-access/warehouses.api';
-import { fromLocalDate, toLocalDate } from '../../../shared/forms/date-utils';
+import { fromLocalDate, pickerDateToApi } from '../../../shared/forms/date-utils';
 import { FieldErrorPipe } from '../../../shared/forms/field-error.pipe';
 import {
   applyServerErrors,
@@ -282,8 +282,8 @@ export class TransferFormPage implements OnInit, HasUnsavedChanges {
     const body: TransferRequest = {
       fromWarehouseId: value.fromWarehouseId,
       toWarehouseId: value.toWarehouseId,
-      transferDate: toLocalDate(value.transferDate!),
-      expectedDate: value.expectedDate ? toLocalDate(value.expectedDate) : null,
+      transferDate: pickerDateToApi(value.transferDate!),
+      expectedDate: value.expectedDate ? pickerDateToApi(value.expectedDate) : null,
       note: optionalText(value.note),
       lines: value.lines.map((line) => ({
         productId: line.product!.id,

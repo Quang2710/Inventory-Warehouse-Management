@@ -9,7 +9,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { RouterLink } from '@angular/router';
 
-import type { AuditAction, AuditEntityType, AuditLog } from '../../../core/api';
+import type { AuditAction, AuditEntityType, AuditLog, Permission } from '../../../core/api';
 import { AuthStore } from '../../../core/auth/auth.store';
 import { AUDIT_ACTION_LABEL_KEYS, AUDIT_ENTITY_LABEL_KEYS } from '../../../core/i18n/labels';
 import { TranslatePipe } from '../../../core/i18n/translate.pipe';
@@ -23,7 +23,7 @@ import { PageHeader } from '../../../shared/ui/page-header/page-header';
 import { SearchField } from '../../../shared/ui/search-field/search-field';
 import { AuditDetailDialog } from '../components/audit-detail-dialog';
 import { AuditLogsApi } from '../data-access/audit-logs.api';
-import { fromLocalDate, toLocalDate } from '../../../shared/forms/date-utils';
+import { fromLocalDate, pickerDateToApi } from '../../../shared/forms/date-utils';
 
 const COLUMNS: readonly TableColumn[] = [
   { key: 'occurredAt', labelKey: 'audit.fields.occurredAt', sortable: true, required: true },
@@ -36,9 +36,7 @@ const COLUMNS: readonly TableColumn[] = [
 ];
 
 /** Đường dẫn tới đối tượng của bản ghi (nếu có màn hình chi tiết và đủ quyền). */
-const ENTITY_ROUTES: Partial<
-  Record<AuditEntityType, { path: string; permission: Parameters<AuthStore['hasPermission']>[0] }>
-> = {
+const ENTITY_ROUTES: Partial<Record<AuditEntityType, { path: string; permission: Permission }>> = {
   TRANSFER: { path: '/transfers', permission: 'transfer:read' },
   STOCKTAKE: { path: '/stocktakes', permission: 'stocktake:read' },
   WAREHOUSE: { path: '/warehouses', permission: 'warehouse:read' },
@@ -110,7 +108,7 @@ export class AuditLogPage {
   protected readonly toDate = computed(() => fromLocalDate(this.list.params().filters.to));
 
   protected setDate(key: 'from' | 'to', value: Date | null): void {
-    this.list.setFilter(key, value ? toLocalDate(value) : null);
+    this.list.setFilter(key, value ? pickerDateToApi(value) : null);
   }
 
   protected entityLink(entry: AuditLog): string | null {

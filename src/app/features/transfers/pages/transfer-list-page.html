@@ -69,21 +69,23 @@
     </mat-form-field>
   </ng-container>
 
-  <ng-template appCell="code" let-row
+  <ng-template appCell="code" [appCellOf]="list.items()" let-row
     ><span class="mono">{{ row.code }}</span></ng-template
   >
-  <ng-template appCell="route" let-row>
+  <ng-template appCell="route" [appCellOf]="list.items()" let-row>
     <span class="route">
       {{ row.fromWarehouseName }}
       <mat-icon aria-hidden="true">arrow_forward</mat-icon>
       {{ row.toWarehouseName }}
     </span>
   </ng-template>
-  <ng-template appCell="transferDate" let-row>{{ row.transferDate | date }}</ng-template>
-  <ng-template appCell="expectedDate" let-row>{{
+  <ng-template appCell="transferDate" [appCellOf]="list.items()" let-row>{{
+    row.transferDate | date
+  }}</ng-template>
+  <ng-template appCell="expectedDate" [appCellOf]="list.items()" let-row>{{
     row.expectedDate ? (row.expectedDate | date) : '—'
   }}</ng-template>
-  <ng-template appCell="totalQuantity" let-row>
+  <ng-template appCell="totalQuantity" [appCellOf]="list.items()" let-row>
     {{ row.totalQuantity | number }}
     @if (
       row.receivedQuantity !== null &&
@@ -93,8 +95,10 @@
       <span class="short">({{ row.receivedQuantity | number }})</span>
     }
   </ng-template>
-  <ng-template appCell="createdBy" let-row>{{ row.createdBy.fullName }}</ng-template>
-  <ng-template appCell="status" let-row
+  <ng-template appCell="createdBy" [appCellOf]="list.items()" let-row>{{
+    row.createdBy.fullName
+  }}</ng-template>
+  <ng-template appCell="status" [appCellOf]="list.items()" let-row
     ><app-status-chip [status]="statusLabels[row.status]"
   /></ng-template>
 </app-data-table>

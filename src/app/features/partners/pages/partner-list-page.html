@@ -59,20 +59,24 @@
     }
   </ng-container>
 
-  <ng-template appCell="code" let-row>
+  <ng-template appCell="code" [appCellOf]="list.items()" let-row>
     <span class="mono">{{ row.code }}</span>
   </ng-template>
-  <ng-template appCell="type" let-row>
+  <ng-template appCell="type" [appCellOf]="list.items()" let-row>
     @if (typeLabel(row); as label) {
       {{ label | t }}
     }
   </ng-template>
-  <ng-template appCell="receiptCount" let-row>{{ countOf(row) | number }}</ng-template>
-  <ng-template appCell="issueCount" let-row>{{ countOf(row) | number }}</ng-template>
-  <ng-template appCell="status" let-row>
+  <ng-template appCell="receiptCount" [appCellOf]="list.items()" let-row>{{
+    countOf(row) | number
+  }}</ng-template>
+  <ng-template appCell="issueCount" [appCellOf]="list.items()" let-row>{{
+    countOf(row) | number
+  }}</ng-template>
+  <ng-template appCell="status" [appCellOf]="list.items()" let-row>
     <app-status-chip [status]="statusLabels[row.status]" />
   </ng-template>
-  <ng-template appCell="actions" let-row>
+  <ng-template appCell="actions" [appCellOf]="list.items()" let-row>
     @if (canWrite()) {
       <button
         mat-icon-button

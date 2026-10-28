@@ -47,18 +47,22 @@
     </mat-form-field>
   </ng-container>
 
-  <ng-template appCell="code" let-row
+  <ng-template appCell="code" [appCellOf]="list.items()" let-row
     ><span class="mono">{{ row.code }}</span></ng-template
   >
-  <ng-template appCell="binCount" let-row
+  <ng-template appCell="binCount" [appCellOf]="list.items()" let-row
     >{{ row.usedBinCount | number }} / {{ row.binCount | number }}</ng-template
   >
-  <ng-template appCell="skuCount" let-row>{{ row.skuCount | number }}</ng-template>
-  <ng-template appCell="totalQuantity" let-row>{{ row.totalQuantity | number }}</ng-template>
-  <ng-template appCell="totalValue" let-row>{{
+  <ng-template appCell="skuCount" [appCellOf]="list.items()" let-row>{{
+    row.skuCount | number
+  }}</ng-template>
+  <ng-template appCell="totalQuantity" [appCellOf]="list.items()" let-row>{{
+    row.totalQuantity | number
+  }}</ng-template>
+  <ng-template appCell="totalValue" [appCellOf]="list.items()" let-row>{{
     row.totalValue | currency: 'VND' : 'symbol' : '1.0-0'
   }}</ng-template>
-  <ng-template appCell="status" let-row
+  <ng-template appCell="status" [appCellOf]="list.items()" let-row
     ><app-status-chip [status]="statusLabels[row.status]"
   /></ng-template>
 </app-data-table>

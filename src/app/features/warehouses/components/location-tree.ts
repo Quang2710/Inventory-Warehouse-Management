@@ -63,8 +63,15 @@ export class LocationTree {
 
   protected readonly typeLabels = LOCATION_TYPE_LABEL_KEYS;
   protected readonly statusLabels = WAREHOUSE_STATUS;
-  protected readonly typeIcons = TYPE_ICON;
-  protected readonly childType = CHILD_TYPE;
+
+  /** Ngữ cảnh template đệ quy / menu không có kiểu → tra bảng qua hàm có kiểu. */
+  protected typeIcon(type: LocationType): string {
+    return TYPE_ICON[type];
+  }
+
+  protected childTypeOf(type: LocationType): LocationType | null {
+    return CHILD_TYPE[type];
+  }
 
   /** Mặc định mở các khu; người dùng mở/thu từng nhánh. */
   private readonly expandedOverride = signal<Set<string> | null>(null);

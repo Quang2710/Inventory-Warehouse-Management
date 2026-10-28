@@ -46,9 +46,7 @@
       } @else {
         <span class="toggle-placeholder"></span>
       }
-      <mat-icon class="type-icon" aria-hidden="true">{{
-        typeIcons[$any(node.location.type)]
-      }}</mat-icon>
+      <mat-icon class="type-icon" aria-hidden="true">{{ typeIcon(node.location.type) }}</mat-icon>
       <span class="code mono">{{ node.location.code }}</span>
       <span class="name">{{ node.location.name }}</span>
       @if (node.location.status === 'INACTIVE') {
@@ -86,7 +84,7 @@
 
 <mat-menu #menu="matMenu">
   <ng-template matMenuContent let-location="location">
-    @if (childType[$any(location.type)]; as child) {
+    @if (childTypeOf(location.type); as child) {
       <button mat-menu-item type="button" (click)="add.emit({ parent: location, type: child })">
         <mat-icon>add</mat-icon>
         <span>{{ 'locations.addChild' | t: { type: (typeLabels[child] | t) } }}</span>
