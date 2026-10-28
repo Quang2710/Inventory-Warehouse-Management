@@ -32,3 +32,17 @@ export function addMinutes(date: Date, minutes: number): Date {
 export function nowIso(): string {
   return new Date().toISOString();
 }
+
+/** Số ngày từ `from` đến `to` (`YYYY-MM-DD`), âm nếu `to` trước `from`. */
+export function daysBetween(from: string, to: string): number {
+  const start = Date.UTC(+from.slice(0, 4), +from.slice(5, 7) - 1, +from.slice(8, 10));
+  const end = Date.UTC(+to.slice(0, 4), +to.slice(5, 7) - 1, +to.slice(8, 10));
+  return Math.round((end - start) / 86_400_000);
+}
+
+/** Cộng ngày cho chuỗi `YYYY-MM-DD`. */
+export function addLocalDays(localDate: string, days: number): string {
+  const date = new Date(`${localDate}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}

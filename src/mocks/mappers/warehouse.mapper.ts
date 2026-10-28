@@ -5,7 +5,9 @@ import type {
   MapRack,
   MapZone,
   Product,
+  SerialUnit,
   StockItem,
+  StockLot,
   Warehouse,
   WarehouseMap,
 } from '../../app/core/api/schema';
@@ -15,9 +17,12 @@ import {
   type BinStockEntity,
   type LocationEntity,
   type ProductEntity,
+  type SerialUnitEntity,
   type StockItemEntity,
+  type StockLotEntity,
   type WarehouseEntity,
 } from '../db';
+import { daysToExpiry, expiryStatusOf } from '../domain/expiry';
 import { stockStatusOf } from '../domain/inventory';
 import {
   locationPath,
@@ -25,7 +30,7 @@ import {
   locationTotals,
   type LocationTotals,
 } from '../domain/locations';
-import { opt } from './common';
+import { opt, warehouseName } from './common';
 
 export function toWarehouse(warehouse: WarehouseEntity): Warehouse {
   let skuCount = 0;
@@ -262,11 +267,55 @@ export function toProduct(product: ProductEntity, totalStock: number): Product {
     maxStock: opt(product.maxStock),
     trackLot: product.trackLot,
     trackExpiry: product.trackExpiry,
+    trackSerial: product.trackSerial,
     status: product.status,
     description: opt(product.description),
     imageUrl: opt(product.imageUrl),
     totalStock,
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
+  };
+}
+
+export function toStockLot(lot: StockLotEntity, asOf: string, expiringDays: number): StockLot {
+  const product = findById('product', lot.productId);
+  return {
+    id: lot.id,
+    productId: lot.productId,
+    sku: product?.sku ?? '—',
+    productName: product?.name ?? '—',
+    unit: product?.unit ?? '',
+    warehouseId: lot.warehouseId,
+    warehouseName: warehouseName(lot.warehouseId),
+    locationId: lot.locationId,
+    locationCode: findById('location', lot.locationId)?.code ?? null,
+    lotNumber: lot.lotNumber,
+    expiryDate: lot.expiryDate,
+    daysToExpiry: daysToExpiry(lot.expiryDate, asOf),
+    expiryStatus: expiryStatusOf(lot.expiryDate, asOf, expiringDays),
+    quantity: lot.quantity,
+    receivedAt: lot.receivedAt,
+  };
+}
+
+export function toSerialUnit(unit: SerialUnitEntity): SerialUnit {
+  const product = findById('product', unit.productId);
+  return {
+    serialNumber: unit.serialNumber,
+    productId: unit.productId,
+    sku: product?.sku ?? '—',
+    productName: product?.name ?? '—',
+    status: unit.status,
+    warehouseId: unit.warehouseId,
+    warehouseName: unit.warehouseId ? warehouseName(unit.warehouseId) : null,
+    locationId: unit.locationId,
+    locationCode: findById('location', unit.locationId)?.code ?? null,
+    lotNumber: unit.lotNumber,
+    expiryDate: unit.expiryDate,
+    receivedAt: unit.receivedAt,
+    lastDocumentType: unit.lastDocumentType,
+    lastDocumentId: unit.lastDocumentId,
+    lastDocumentCode: unit.lastDocumentCode,
+    updatedAt: unit.updatedAt,
   };
 }

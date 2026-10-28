@@ -27,6 +27,8 @@ export interface LeafCategorySeed {
   basePrice: readonly [number, number];
   trackExpiry: boolean;
   trackLot: boolean;
+  /** Quản lý từng đơn vị theo số serial (mặc định không). */
+  trackSerial?: boolean;
 }
 
 export const CATEGORY_TREE: readonly CategorySeed[] = [
@@ -280,6 +282,7 @@ export const CATEGORY_TREE: readonly CategorySeed[] = [
         basePrice: [180000, 1450000],
         trackExpiry: false,
         trackLot: false,
+        trackSerial: true,
       },
     ],
   },

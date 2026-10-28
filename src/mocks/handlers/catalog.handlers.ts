@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw';
 
 import type {
   BinStockItem,
+  Category,
   Product,
   ProductStatus,
   StockItem,
@@ -42,6 +43,41 @@ function productDto(id: string): Product | null {
  * (Tạo/sửa sản phẩm thuộc giai đoạn Hàng hóa.)
  */
 export const catalogHandlers = [
+  http.get(`${API}/categories`, ({ request }) => {
+    authorize(request, 'category:read');
+    const query = parseListQuery(new URL(request.url));
+    const parentId = query.params.get('parentId');
+    const productCount = new Map<string, number>();
+    for (const product of db.product.getAll()) {
+      for (const id of [product.category?.id, product.category?.parent?.id]) {
+        if (id) productCount.set(id, (productCount.get(id) ?? 0) + 1);
+      }
+    }
+    const items: Category[] = db.category
+      .getAll()
+      .filter((category) =>
+        parentId === 'root' ? !category.parent : !parentId || category.parent?.id === parentId,
+      )
+      .map((category) => ({
+        id: category.id,
+        code: category.code,
+        name: category.name,
+        parentId: category.parent?.id ?? null,
+        parentName: category.parent?.name ?? null,
+        ...(category.description ? { description: category.description } : {}),
+        productCount: productCount.get(category.id) ?? 0,
+        createdAt: category.createdAt,
+        updatedAt: category.updatedAt,
+      }));
+    return HttpResponse.json(
+      toPage(items, query, {
+        sortable: ['code', 'name', 'productCount', 'createdAt'],
+        defaultSort: 'code,asc',
+        searchIn: (category) => [category.code, category.name],
+      }),
+    );
+  }),
+
   http.get(`${API}/products`, ({ request }) => {
     authorize(request, 'product:read');
     const query = parseListQuery(new URL(request.url));

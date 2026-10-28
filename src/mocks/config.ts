@@ -34,6 +34,6 @@ export const MOCK_CONFIG = {
   /** Số ngày lịch sử chứng từ được sinh (tính lùi từ hôm nay). */
   seedHistoryDays: 120,
   /** Tăng khi đổi cấu trúc db/seed để snapshot cũ trong IndexedDB bị bỏ qua. */
-  snapshotVersion: 2,
+  snapshotVersion: 3,
   indexedDbName: 'iwm-mock-db',
 } as const;

@@ -13,6 +13,7 @@ import type {
   MovementType,
   PartnerStatus,
   Permission,
+  SerialStatus,
   ProductStatus,
   Role,
   StocktakeStatus,
@@ -33,9 +34,11 @@ const uuid = (): string => crypto.randomUUID();
  *   dùng KHÓA NGOẠI (`productId`, `warehouseId`, …): ở @mswjs/data 0.16 mỗi lần đọc thuộc tính
  *   quan hệ là một lần quét tuần tự model đích, đo thực tế làm seed/khôi phục chậm tới vài giây
  *   với ~2000 bản ghi. Handler join qua `findById` (O(1)).
- * - `stockItem` (theo kho) và `binStock` (theo ô) là bảng tổng hợp, CHỈ được cập nhật qua
- *   `domain/inventory.ts` cùng lúc ghi `stockMovement`.
- *   `stockItem.id` = `${productId}__${warehouseId}`, `binStock.id` = `${productId}__${locationId}`.
+ * - `stockItem` (theo kho), `binStock` (theo ô), `stockLot` (theo ô × lô) và `serialUnit` là bảng
+ *   tổng hợp, CHỈ được cập nhật qua `domain/inventory.ts` cùng lúc ghi `stockMovement`.
+ *   `stockItem.id` = `${productId}__${warehouseId}`, `binStock.id` = `${productId}__${locationId}`,
+ *   `stockLot.id` = `${productId}__${locationId ?? ''}__${lotNumber ?? ''}|${expiryDate ?? ''}`,
+ *   `serialUnit.id` = `${productId}__${serialNumber}`.
  * - Mảng giá trị nguyên thủy (vd `warehouseIds`) được hỗ trợ; mảng object lưu dạng chuỗi JSON.
  */
 export const db = factory({
@@ -117,6 +120,7 @@ export const db = factory({
     maxStock: nullable(Number),
     trackLot: Boolean,
     trackExpiry: Boolean,
+    trackSerial: Boolean,
     status: (): ProductStatus => 'ACTIVE',
     description: nullable(String),
     imageUrl: nullable(String),
@@ -169,6 +173,38 @@ export const db = factory({
     quantity: Number,
     updatedAt: String,
   },
+  /**
+   * Tồn theo lô trong từng ô — chỉ cho sản phẩm `trackLot` / `trackExpiry`. Tổng các lô của một ô
+   * = `binStock` của ô đó. `locationId` null với kho chưa khai báo vị trí.
+   */
+  stockLot: {
+    id: primaryKey(String),
+    productId: String,
+    warehouseId: String,
+    locationId: nullable(String),
+    lotNumber: nullable(String),
+    expiryDate: nullable(String),
+    /** Lần đầu lô vào ô — dùng phân xử FEFO khi cùng hạn (lô nhập trước xuất trước). */
+    receivedAt: String,
+    quantity: Number,
+    updatedAt: String,
+  },
+  /** Từng đơn vị của sản phẩm `trackSerial`. */
+  serialUnit: {
+    id: primaryKey(String),
+    productId: String,
+    serialNumber: String,
+    status: (): SerialStatus => 'IN_STOCK',
+    warehouseId: nullable(String),
+    locationId: nullable(String),
+    lotNumber: nullable(String),
+    expiryDate: nullable(String),
+    receivedAt: String,
+    lastDocumentType: (): DocumentType => 'GOODS_RECEIPT',
+    lastDocumentId: String,
+    lastDocumentCode: String,
+    updatedAt: String,
+  },
   goodsReceipt: {
     id: primaryKey(uuid),
     code: String,
@@ -201,6 +237,9 @@ export const db = factory({
     unitCost: Number,
     lotNumber: nullable(String),
     expiryDate: nullable(String),
+    serialNumbers: (): string[] => [],
+    /** Ô cất hàng: chỉ định khi lập phiếu, hoặc hệ thống chọn khi duyệt. */
+    locationId: nullable(String),
   },
   goodsIssue: {
     id: primaryKey(uuid),
@@ -235,6 +274,12 @@ export const db = factory({
     unitPrice: Number,
     /** Giá vốn chốt tại thời điểm duyệt. */
     unitCost: nullable(Number),
+    /** Lô chỉ định (null = FEFO). */
+    lotNumber: nullable(String),
+    /** Serial chỉ định (rỗng = hệ thống chọn). */
+    serialNumbers: (): string[] => [],
+    /** JSON `StockAllocation[]` — ô/lô/serial đã lấy khi duyệt. */
+    picks: String,
   },
   transfer: {
     id: primaryKey(uuid),
@@ -264,7 +309,7 @@ export const db = factory({
     productId: String,
     quantity: Number,
     fromLocationId: nullable(String),
-    /** JSON `{ locationId, quantity }[]` — các ô đã lấy hàng khi xuất đi. */
+    /** JSON `StockAllocation[]` — ô / lô / serial đã lấy hàng khi xuất đi. */
     picks: String,
     /** Giá vốn bình quân của kho đi tại thời điểm xuất — dùng khi nhập kho đến / hoàn trả. */
     unitCost: nullable(Number),
@@ -323,6 +368,9 @@ export const db = factory({
     documentCode: String,
     createdById: String,
     note: nullable(String),
+    lotNumber: nullable(String),
+    expiryDate: nullable(String),
+    serialNumbers: (): string[] => [],
   },
   auditLog: {
     id: primaryKey(uuid),
@@ -380,6 +428,8 @@ export type SupplierEntity = EntityOf<'supplier'>;
 export type CustomerEntity = EntityOf<'customer'>;
 export type StockItemEntity = EntityOf<'stockItem'>;
 export type BinStockEntity = EntityOf<'binStock'>;
+export type StockLotEntity = EntityOf<'stockLot'>;
+export type SerialUnitEntity = EntityOf<'serialUnit'>;
 export type GoodsReceiptEntity = EntityOf<'goodsReceipt'>;
 export type GoodsReceiptLineEntity = EntityOf<'goodsReceiptLine'>;
 export type GoodsIssueEntity = EntityOf<'goodsIssue'>;

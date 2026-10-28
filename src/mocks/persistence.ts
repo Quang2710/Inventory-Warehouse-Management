@@ -24,6 +24,8 @@ const MODEL_ORDER = [
   'customer',
   'stockItem',
   'binStock',
+  'stockLot',
+  'serialUnit',
   'goodsReceiptLine',
   'goodsReceipt',
   'goodsIssueLine',

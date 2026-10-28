@@ -33,6 +33,7 @@ export const ALL_PERMISSIONS = [
   'supplier:write',
   'customer:read',
   'customer:write',
+  'report:read',
 ] as const satisfies readonly Permission[];
 
 // Báo lỗi biên dịch nếu contract thêm Permission mới mà danh sách trên chưa cập nhật.
@@ -79,6 +80,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'stocktake:approve',
     'supplier:read',
     'customer:read',
+    'report:read',
   ],
   WAREHOUSE_STAFF: [
     'dashboard:view',
@@ -116,6 +118,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'supplier:write',
     'customer:read',
     'customer:write',
+    'report:read',
   ],
 };
 

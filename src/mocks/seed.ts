@@ -33,16 +33,13 @@ import {
   type UserEntity,
   type WarehouseEntity,
 } from './db';
+import { sellableQuantity } from './domain/allocation';
+import { isExpired } from './domain/expiry';
 import { recordAudit } from './domain/audit';
 import { nextDocumentCode } from './domain/document-code';
-import {
-  allocateFromBins,
-  availableQuantity,
-  currentAverageCost,
-  InsufficientStockError,
-  postMovements,
-  type MovementInput,
-} from './domain/inventory';
+import { availableQuantity, InsufficientStockError, lotsOf, SerialError } from './domain/inventory';
+import { approveIssue, cancelIssue } from './domain/issues';
+import { approveReceipt, cancelReceipt } from './domain/receipts';
 import { approveStocktake, openStocktake, recordCount, stocktakeLines } from './domain/stocktakes';
 import { cancelTransfer, receiveTransfer, shipTransfer, transferLines } from './domain/transfers';
 import { addDays, addMinutes, atLocalTime, toLocalDate } from './utils/date';
@@ -56,8 +53,9 @@ import { toUsername } from './utils/text';
  * trong `seedHistoryDays` ngày gần nhất.
  *
  * Mọi sự kiện trong ngày được xếp theo thời gian rồi xử lý qua đúng nghiệp vụ mà handler dùng
- * (`postMovements`, `shipTransfer`, `approveStocktake`…), nên tồn kho (theo kho và theo ô)
- * luôn khớp tổng movement, không bao giờ âm và số dư trên thẻ kho đúng thứ tự thời gian.
+ * (`approveReceipt`, `approveIssue`, `shipTransfer`, `approveStocktake`…), nên tồn kho (theo kho,
+ * ô, lô và serial) luôn khớp tổng movement, không bao giờ âm và số dư trên thẻ kho đúng thứ tự
+ * thời gian. Xuất kho/chuyển kho theo FEFO; ~15% lô nhập có hạn ngắn để có hàng cận date/hết hạn.
  */
 export interface SeedSummary {
   users: number;
@@ -106,6 +104,7 @@ interface PlannedReceiptLine {
   unitCost: number;
   lotNumber: string | null;
   expiryDate: string | null;
+  serialNumbers: string[];
 }
 
 interface PlannedIssueLine {
@@ -414,6 +413,7 @@ function seedProducts(
             maxStock: minStock * faker.number.int({ min: 4, max: 8 }),
             trackLot: seed.trackLot,
             trackExpiry: seed.trackExpiry,
+            trackSerial: seed.trackSerial ?? false,
             status: faker.number.float() < 0.03 ? 'INACTIVE' : 'ACTIVE',
             description: `${baseName} (${variant.label}) — ${category.name}`,
             imageUrl: null,
@@ -573,6 +573,8 @@ class TimelineSeeder {
   private readonly binLoad = new Map<string, number>();
   private readonly capacity = new Map<string, number>();
   private readonly nextId = () => faker.string.uuid();
+  /** Số thứ tự serial đã cấp theo sản phẩm. */
+  private readonly serialSeq = new Map<string, number>();
 
   constructor(
     private readonly users: SeedUsers,
@@ -621,26 +623,18 @@ class TimelineSeeder {
     return faker.helpers.arrayElement(this.usersFor(warehouseId, 'WAREHOUSE_MANAGER', 'ADMIN'));
   }
 
-  private post(inputs: MovementInput[]): void {
-    postMovements(inputs);
-    this.trackLoad(inputs);
-  }
-
-  private trackLoad(inputs: readonly MovementInput[]): void {
-    for (const input of inputs) {
-      if (input.locationId) {
-        this.binLoad.set(
-          input.locationId,
-          (this.binLoad.get(input.locationId) ?? 0) + input.quantity,
-        );
-      }
-    }
-  }
-
-  /** Đồng bộ tải ô sau các nghiệp vụ tự ghi movement (chuyển kho, kiểm kê). */
-  private trackDocumentLoad(documentId: string): void {
+  /**
+   * Đồng bộ tải ô sau khi nghiệp vụ ghi movement của chứng từ.
+   * @param onlyCancel chỉ tính bút toán đảo (hủy chứng từ đã được tính tải trước đó)
+   */
+  private trackDocumentLoad(documentId: string, onlyCancel = false): void {
+    const cancelTypes = new Set(['RECEIPT_CANCEL', 'ISSUE_CANCEL']);
     for (const movement of db.stockMovement.getAll()) {
-      if (movement.documentId === documentId && movement.locationId) {
+      if (
+        movement.documentId === documentId &&
+        movement.locationId &&
+        (!onlyCancel || cancelTypes.has(movement.type))
+      ) {
         this.binLoad.set(
           movement.locationId,
           (this.binLoad.get(movement.locationId) ?? 0) + movement.quantity,
@@ -672,17 +666,32 @@ class TimelineSeeder {
   ): PlannedReceiptLine {
     const [min, max] = typicalQuantity(product.costPrice);
     const receivedOn = new Date(`${localDate}T00:00:00+07:00`);
+    const quantity = Math.max(1, Math.round(faker.number.int({ min, max }) * multiplier));
+    // ~15% lô "cận date" (hạn ngắn) để có hàng sắp hết hạn / đã hết hạn cho cảnh báo & FEFO.
+    const shelfLife =
+      faker.number.float() < 0.15
+        ? faker.number.int({ min: 25, max: 110 })
+        : faker.number.int({ min: 120, max: 540 });
     return {
       product,
-      quantity: Math.round(faker.number.int({ min, max }) * multiplier),
+      quantity,
       unitCost: roundTo(product.costPrice * faker.number.float({ min: 0.95, max: 1.05 }), 100),
       lotNumber: product.trackLot
         ? `L${localDate.replace(/-/g, '').slice(2)}-${faker.string.numeric(3)}`
         : null,
-      expiryDate: product.trackExpiry
-        ? toLocalDate(addDays(receivedOn, faker.number.int({ min: 90, max: 540 })))
-        : null,
+      expiryDate: product.trackExpiry ? toLocalDate(addDays(receivedOn, shelfLife)) : null,
+      serialNumbers: product.trackSerial ? this.nextSerials(product, quantity) : [],
     };
+  }
+
+  private nextSerials(product: ProductEntity, count: number): string[] {
+    const start = this.serialSeq.get(product.id) ?? 0;
+    this.serialSeq.set(product.id, start + count);
+    const prefix = product.sku.replace(/-/g, '');
+    return Array.from(
+      { length: count },
+      (_, index) => `${prefix}${String(start + index + 1).padStart(5, '0')}`,
+    );
   }
 
   // ── dòng thời gian ──
@@ -814,9 +823,22 @@ class TimelineSeeder {
       { weight: 4, value: 'RETURN_TO_SUPPLIER' },
       { weight: 3, value: 'OTHER' },
     ]);
-    const inStock = this.activeProducts.filter(
-      (product) => availableQuantity(product.id, warehouse.id) > 0,
-    );
+    const asOf = toLocalDate(createdAt);
+    // Xuất hủy ưu tiên mặt hàng có lô đã hết hạn; các lý do khác chỉ lấy tồn còn hạn.
+    const expiredStock = (product: ProductEntity) =>
+      lotsOf(product.id, warehouse.id)
+        .filter((lot) => isExpired(lot.expiryDate, asOf))
+        .reduce((sum, lot) => sum + lot.quantity, 0);
+    const availableFor = (product: ProductEntity) =>
+      reason === 'DAMAGED'
+        ? availableQuantity(product.id, warehouse.id)
+        : sellableQuantity(product, warehouse.id, asOf);
+    const withExpired =
+      reason === 'DAMAGED' ? this.activeProducts.filter((p) => expiredStock(p) > 0) : [];
+    const inStock =
+      withExpired.length > 0
+        ? withExpired
+        : this.activeProducts.filter((product) => availableFor(product) > 0);
     if (inStock.length === 0) {
       return;
     }
@@ -826,12 +848,15 @@ class TimelineSeeder {
       faker.number.int({ min: 1, max: Math.min(maxLines, inStock.length) }),
     );
     const lines: PlannedIssueLine[] = picked.map((product) => {
-      const available = availableQuantity(product.id, warehouse.id);
+      const available =
+        withExpired.length > 0 ? Math.max(1, expiredStock(product)) : availableFor(product);
       const [min, max] = typicalQuantity(product.costPrice);
       const wanted =
         reason === 'SALE'
           ? faker.number.int({ min, max })
-          : faker.number.int({ min: 1, max: Math.max(1, min) });
+          : withExpired.length > 0
+            ? available
+            : faker.number.int({ min: 1, max: Math.max(1, min) });
       const unitPrice =
         reason === 'SALE'
           ? product.salePrice
@@ -910,6 +935,12 @@ class TimelineSeeder {
         unitCost: line.unitCost,
         lotNumber: line.lotNumber,
         expiryDate: line.expiryDate,
+        serialNumbers: line.serialNumbers,
+        // Phiếu đã duyệt: cất theo ô "nhà" của sản phẩm (seed theo dõi tải từng ô).
+        locationId:
+          args.status === 'APPROVED'
+            ? this.putaway(line.product, args.warehouse, line.quantity)
+            : null,
       }),
     );
     const entity = { id: receipt.id, label: code };
@@ -942,23 +973,12 @@ class TimelineSeeder {
       );
     }
     if (args.status === 'APPROVED' && times.decidedAt) {
-      const occurredAt = iso(times.decidedAt);
-      this.post(
-        args.lines.map((line) => ({
-          id: faker.string.uuid(),
-          product: line.product,
-          warehouse: args.warehouse,
-          locationId: this.putaway(line.product, args.warehouse, line.quantity),
-          quantity: line.quantity,
-          unitCost: line.unitCost,
-          type: 'RECEIPT' as const,
-          documentType: 'GOODS_RECEIPT' as const,
-          documentId: receipt.id,
-          documentCode: code,
-          occurredAt,
-          createdById: args.approver.id,
-        })),
-      );
+      approveReceipt(receipt, {
+        actor: args.approver,
+        occurredAt: iso(times.decidedAt),
+        nextId: this.nextId,
+      });
+      this.trackDocumentLoad(receipt.id);
       seedAudit(
         args.approver,
         'APPROVE',
@@ -986,10 +1006,6 @@ class TimelineSeeder {
     const localDate = toLocalDate(args.createdAt);
     const times = documentTimes(args.createdAt, args.status);
     const approved = args.status === 'APPROVED';
-    // Xuất kho không làm đổi giá vốn bình quân → chốt giá vốn trước khi ghi sổ.
-    const costs = args.lines.map((line) =>
-      approved ? currentAverageCost(line.product.id, args.warehouse.id) : null,
-    );
     const code = nextDocumentCode('PX', localDate);
     const rejectedReason =
       args.status === 'REJECTED' ? faker.helpers.arrayElement(REJECT_REASONS) : null;
@@ -1013,7 +1029,10 @@ class TimelineSeeder {
         productId: line.product.id,
         quantity: line.quantity,
         unitPrice: line.unitPrice,
-        unitCost: costs[index],
+        unitCost: null,
+        lotNumber: null,
+        serialNumbers: [],
+        picks: '[]',
       }),
     );
     const entity = { id: issue.id, label: code };
@@ -1046,26 +1065,12 @@ class TimelineSeeder {
       );
     }
     if (approved && times.decidedAt) {
-      const occurredAt = iso(times.decidedAt);
-      const inputs: MovementInput[] = args.lines.flatMap((line, index) =>
-        (allocateFromBins(line.product.id, args.warehouse.id, line.quantity) ?? []).map(
-          (allocation) => ({
-            id: faker.string.uuid(),
-            product: line.product,
-            warehouse: args.warehouse,
-            locationId: allocation.locationId,
-            quantity: -allocation.quantity,
-            unitCost: costs[index] ?? 0,
-            type: 'ISSUE' as const,
-            documentType: 'GOODS_ISSUE' as const,
-            documentId: issue.id,
-            documentCode: code,
-            occurredAt,
-            createdById: args.approver.id,
-          }),
-        ),
-      );
-      this.post(inputs);
+      approveIssue(issue, {
+        actor: args.approver,
+        occurredAt: iso(times.decidedAt),
+        nextId: this.nextId,
+      });
+      this.trackDocumentLoad(issue.id);
       seedAudit(
         args.approver,
         'APPROVE',
@@ -1092,57 +1097,32 @@ class TimelineSeeder {
     const canceller = this.approverFor(warehouse.id);
     const reason = faker.helpers.arrayElement(CANCEL_REASONS);
     const at = this.dayAt(cancelDay, 18, 30);
-    this.schedule(cancelDay, at, () =>
-      this.cancelDocument(kind, document, warehouse, canceller, reason, at),
-    );
+    this.schedule(cancelDay, at, () => this.cancelDocument(kind, document, canceller, reason, at));
   }
 
   /** Hủy chứng từ đã duyệt: đảo đúng các movement đã ghi (đúng ô, đúng giá vốn). */
   private cancelDocument(
     kind: 'receipt' | 'issue',
     document: SeededDocument,
-    warehouse: WarehouseEntity,
     canceller: UserEntity,
     reason: string,
     at: Date,
   ): void {
-    const occurredAt = iso(at);
-    const inputs: MovementInput[] = db.stockMovement
-      .getAll()
-      .filter((movement) => movement.documentId === document.id)
-      .map((movement) => ({
-        id: faker.string.uuid(),
-        product: this.productById.get(movement.productId)!,
-        warehouse,
-        locationId: movement.locationId,
-        quantity: -movement.quantity,
-        unitCost: movement.unitCost,
-        type: kind === 'receipt' ? ('RECEIPT_CANCEL' as const) : ('ISSUE_CANCEL' as const),
-        documentType: kind === 'receipt' ? ('GOODS_RECEIPT' as const) : ('GOODS_ISSUE' as const),
-        documentId: document.id,
-        documentCode: document.code,
-        occurredAt,
-        createdById: canceller.id,
-        note: reason,
-      }));
+    const context = { actor: canceller, occurredAt: iso(at), nextId: this.nextId };
+    const before = db.stockMovement.count();
     try {
-      this.post(inputs);
+      if (kind === 'receipt') {
+        cancelReceipt(findById('goodsReceipt', document.id)!, reason, context);
+      } else {
+        cancelIssue(findById('goodsIssue', document.id)!, reason, context);
+      }
     } catch (error) {
-      // Hàng của phiếu nhập đã được xuất bớt → không thể hủy (đúng nghiệp vụ), bỏ qua.
-      if (error instanceof InsufficientStockError) return;
+      // Hàng của phiếu nhập đã được xuất bớt / serial đã bán → không thể hủy (đúng nghiệp vụ).
+      if (error instanceof InsufficientStockError || error instanceof SerialError) return;
       throw error;
     }
-    const data = {
-      status: 'CANCELLED' as const,
-      cancelledById: canceller.id,
-      cancelledAt: occurredAt,
-      cancelReason: reason,
-      updatedAt: occurredAt,
-    };
-    if (kind === 'receipt') {
-      db.goodsReceipt.update({ where: { id: { equals: document.id } }, data });
-    } else {
-      db.goodsIssue.update({ where: { id: { equals: document.id } }, data });
+    if (db.stockMovement.count() > before) {
+      this.trackDocumentLoad(document.id, true);
     }
     seedAudit(
       canceller,
@@ -1158,8 +1138,12 @@ class TimelineSeeder {
 
   private seedTransfer(at: Date, day: number, daysAgo: number): void {
     const [from, to] = faker.helpers.shuffle([...this.warehouses]);
+    const asOf = toLocalDate(at);
+    const sellable = new Map(
+      this.activeProducts.map((product) => [product.id, sellableQuantity(product, from.id, asOf)]),
+    );
     const candidates = this.activeProducts.filter(
-      (product) => availableQuantity(product.id, from.id) >= product.minStock * 2,
+      (product) => sellable.get(product.id)! >= product.minStock * 2,
     );
     if (candidates.length === 0) return;
     const creator = faker.helpers.arrayElement(
@@ -1199,9 +1183,7 @@ class TimelineSeeder {
           productId: product.id,
           quantity: Math.max(
             1,
-            Math.round(
-              availableQuantity(product.id, from.id) * faker.number.float({ min: 0.2, max: 0.35 }),
-            ),
+            Math.round(sellable.get(product.id)! * faker.number.float({ min: 0.2, max: 0.35 })),
           ),
           fromLocationId: null,
           picks: '[]',

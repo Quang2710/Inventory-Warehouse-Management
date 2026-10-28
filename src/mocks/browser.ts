@@ -24,7 +24,13 @@ export async function startMockServer(): Promise<void> {
     onUnhandledRequest: 'bypass',
     quiet: environment.production,
     serviceWorker: {
-      url: new URL('mockServiceWorker.js', document.baseURI).pathname,
+      // Bản demo có PWA: MSW chạy trong service worker gộp (app-sw.js = MSW + ngsw).
+      url: new URL(
+        environment.serviceWorker.enabled
+          ? environment.serviceWorker.script
+          : 'mockServiceWorker.js',
+        document.baseURI,
+      ).pathname,
     },
   });
 }

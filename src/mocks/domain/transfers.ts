@@ -1,21 +1,28 @@
 import { db, findById, type TransferEntity, type TransferLineEntity, type UserEntity } from '../db';
+import { toLocalDate } from '../utils/date';
 import {
-  allocateFromBins,
-  availableQuantity,
+  AllocationLedger,
+  allocateStock,
+  parseAllocations,
+  type StockAllocation,
+} from './allocation';
+import {
   currentAverageCost,
   InsufficientStockError,
   postMovements,
   putawayLocationId,
-  type BinAllocation,
+  writeOffSerials,
   type MovementInput,
   type StockShortage,
 } from './inventory';
 
 /**
  * Nghiệp vụ chuyển kho:
- * DRAFT → ship (trừ tồn kho đi theo ô, TRANSFER_OUT) → IN_TRANSIT
- *       → receive (cộng tồn kho đến, TRANSFER_IN; nhận thiếu = hao hụt) → RECEIVED
- * IN_TRANSIT → cancel (hoàn hàng về đúng các ô đã lấy, TRANSFER_CANCEL) → CANCELLED
+ * DRAFT → ship (trừ tồn kho đi theo FEFO: ô/lô/serial, TRANSFER_OUT) → IN_TRANSIT
+ *       → receive (cộng tồn kho đến, giữ nguyên lô/serial, TRANSFER_IN; nhận thiếu = hao hụt,
+ *         serial không nhận được bị loại) → RECEIVED
+ * IN_TRANSIT → cancel (hoàn hàng về đúng các ô/lô đã lấy, TRANSFER_CANCEL) → CANCELLED
+ * Không chuyển lô đã hết hạn.
  */
 
 export function transferLines(transferId: string): TransferLineEntity[] {
@@ -25,13 +32,8 @@ export function transferLines(transferId: string): TransferLineEntity[] {
     .sort((a, b) => a.lineNo - b.lineNo);
 }
 
-export function parsePicks(line: Pick<TransferLineEntity, 'picks'>): BinAllocation[] {
-  try {
-    const value: unknown = JSON.parse(line.picks || '[]');
-    return Array.isArray(value) ? (value as BinAllocation[]) : [];
-  } catch {
-    return [];
-  }
+export function parsePicks(line: Pick<TransferLineEntity, 'picks'>): StockAllocation[] {
+  return parseAllocations(line.picks);
 }
 
 interface ActionContext {
@@ -54,24 +56,36 @@ export function shipTransfer(transfer: TransferEntity, context: ActionContext): 
   const { from } = requireEntities(transfer);
   const lines = transferLines(transfer.id);
   const shortages: StockShortage[] = [];
+  const ledger = new AllocationLedger();
+  const asOf = toLocalDate(new Date(context.occurredAt));
   const plans = lines.map((line, index) => {
     const product = findById('product', line.productId)!;
-    const allocations = allocateFromBins(product.id, from.id, line.quantity, line.fromLocationId);
-    if (!allocations) {
+    const result = allocateStock(
+      {
+        product,
+        warehouseId: from.id,
+        quantity: line.quantity,
+        asOf,
+        preferredLocationId: line.fromLocationId,
+      },
+      ledger,
+    );
+    if (result.shortage > 0) {
       shortages.push({
         index,
         productId: product.id,
         sku: product.sku,
         productName: product.name,
         locationId: line.fromLocationId,
-        available: availableQuantity(product.id, from.id),
+        available: result.available,
         requested: line.quantity,
       });
     }
+    ledger.reserve(product, from.id, result.picks);
     return {
       line,
       product,
-      allocations: allocations ?? [],
+      allocations: result.picks,
       unitCost: currentAverageCost(product.id, from.id),
     };
   });
@@ -86,6 +100,9 @@ export function shipTransfer(transfer: TransferEntity, context: ActionContext): 
       warehouse: from,
       locationId: allocation.locationId,
       quantity: -allocation.quantity,
+      lotNumber: allocation.lotNumber,
+      expiryDate: allocation.expiryDate,
+      serialNumbers: allocation.serialNumbers,
       unitCost,
       type: 'TRANSFER_OUT' as const,
       documentType: 'TRANSFER' as const,
@@ -130,6 +147,7 @@ export function receiveTransfer(
   const byLine = new Map(receipts.map((receipt) => [receipt.lineId, receipt]));
   const inputs: MovementInput[] = [];
   const updates: { line: TransferLineEntity; received: number; locationId: string | null }[] = [];
+  const lost: { productId: string; serials: string[] }[] = [];
 
   for (const line of transferLines(transfer.id)) {
     const product = findById('product', line.productId)!;
@@ -140,13 +158,25 @@ export function receiveTransfer(
     );
     const locationId = receipt?.toLocationId || putawayLocationId(product.id, to.id);
     updates.push({ line, received, locationId });
-    if (received > 0) {
+    // Nhận theo thứ tự các phần đã lấy (giữ lô/serial); phần cuối thiếu coi như hao hụt.
+    let remaining = received;
+    for (const pick of parsePicks(line)) {
+      const take = Math.min(pick.quantity, remaining);
+      remaining -= take;
+      const serials = pick.serialNumbers ?? [];
+      if (serials.length > take) {
+        lost.push({ productId: product.id, serials: serials.slice(take) });
+      }
+      if (take <= 0) continue;
       inputs.push({
         ...(context.nextId ? { id: context.nextId() } : {}),
         product,
         warehouse: to,
         locationId,
-        quantity: received,
+        quantity: take,
+        lotNumber: pick.lotNumber,
+        expiryDate: pick.expiryDate,
+        ...(product.trackSerial ? { serialNumbers: serials.slice(0, take) } : {}),
         unitCost: line.unitCost ?? product.costPrice,
         type: 'TRANSFER_IN',
         documentType: 'TRANSFER',
@@ -159,6 +189,14 @@ export function receiveTransfer(
     }
   }
   postMovements(inputs);
+  for (const entry of lost) {
+    writeOffSerials(entry.productId, entry.serials, {
+      documentType: 'TRANSFER',
+      documentId: transfer.id,
+      documentCode: transfer.code,
+      occurredAt: context.occurredAt,
+    });
+  }
 
   for (const { line, received, locationId } of updates) {
     db.transferLine.update({
@@ -193,6 +231,9 @@ export function cancelTransfer(
         warehouse: from,
         locationId: pick.locationId,
         quantity: pick.quantity,
+        lotNumber: pick.lotNumber,
+        expiryDate: pick.expiryDate,
+        serialNumbers: pick.serialNumbers,
         unitCost: line.unitCost ?? product.costPrice,
         type: 'TRANSFER_CANCEL' as const,
         documentType: 'TRANSFER' as const,

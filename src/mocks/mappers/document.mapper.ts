@@ -2,6 +2,14 @@ import type {
   AuditChange,
   AuditLog,
   Customer,
+  DocumentAudit,
+  GoodsIssue,
+  GoodsIssueLine,
+  GoodsIssueSummary,
+  GoodsReceipt,
+  GoodsReceiptLine,
+  GoodsReceiptSummary,
+  StockMovement,
   Stocktake,
   StocktakeLine,
   StocktakeSummary,
@@ -14,17 +22,197 @@ import {
   findById,
   type AuditLogEntity,
   type CustomerEntity,
+  type GoodsIssueEntity,
+  type GoodsIssueLineEntity,
+  type GoodsReceiptEntity,
+  type GoodsReceiptLineEntity,
+  type StockMovementEntity,
   type StocktakeEntity,
   type StocktakeLineEntity,
   type SupplierEntity,
   type TransferEntity,
   type TransferLineEntity,
 } from '../db';
+import { toStockPick } from '../domain/allocation';
 import { binQuantity } from '../domain/inventory';
+import { issueLines, parseIssuePicks } from '../domain/issues';
 import { locationPath } from '../domain/locations';
 import { lineVariance, stocktakeLines, stocktakeStats } from '../domain/stocktakes';
+import { receiptLines } from '../domain/receipts';
 import { parsePicks, transferLines } from '../domain/transfers';
 import { opt, requiredUserRef, userRef, warehouseName } from './common';
+
+// ── Phiếu nhập / xuất ──
+
+type ApprovalFields = Pick<
+  GoodsReceiptEntity,
+  | 'createdById'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'submittedAt'
+  | 'approvedById'
+  | 'approvedAt'
+  | 'rejectedById'
+  | 'rejectedAt'
+  | 'rejectedReason'
+  | 'cancelledById'
+  | 'cancelledAt'
+  | 'cancelReason'
+>;
+
+function documentAudit(document: ApprovalFields): DocumentAudit {
+  return {
+    createdBy: requiredUserRef(document.createdById),
+    createdAt: document.createdAt,
+    updatedAt: document.updatedAt,
+    submittedAt: opt(document.submittedAt),
+    approvedBy: userRef(document.approvedById),
+    approvedAt: opt(document.approvedAt),
+    rejectedBy: userRef(document.rejectedById),
+    rejectedAt: opt(document.rejectedAt),
+    rejectedReason: opt(document.rejectedReason),
+    cancelledBy: userRef(document.cancelledById),
+    cancelledAt: opt(document.cancelledAt),
+    cancelReason: opt(document.cancelReason),
+  };
+}
+
+function productFields(productId: string) {
+  const product = findById('product', productId);
+  return {
+    productId,
+    sku: product?.sku ?? '—',
+    productName: product?.name ?? '—',
+    unit: product?.unit ?? '',
+    trackLot: product?.trackLot ?? false,
+    trackExpiry: product?.trackExpiry ?? false,
+    trackSerial: product?.trackSerial ?? false,
+  };
+}
+
+export function toGoodsReceiptLine(line: GoodsReceiptLineEntity): GoodsReceiptLine {
+  return {
+    id: line.id,
+    ...productFields(line.productId),
+    quantity: line.quantity,
+    unitCost: line.unitCost,
+    amount: line.quantity * line.unitCost,
+    lotNumber: opt(line.lotNumber),
+    expiryDate: opt(line.expiryDate),
+    serialNumbers: [...line.serialNumbers],
+    locationId: line.locationId,
+    locationCode: findById('location', line.locationId)?.code ?? null,
+  };
+}
+
+export function toGoodsReceiptSummary(
+  receipt: GoodsReceiptEntity,
+  lines = receiptLines(receipt.id),
+): GoodsReceiptSummary {
+  return {
+    id: receipt.id,
+    code: receipt.code,
+    warehouseId: receipt.warehouseId,
+    warehouseName: warehouseName(receipt.warehouseId),
+    supplierId: receipt.supplierId,
+    supplierName: receipt.supplierName,
+    referenceNo: opt(receipt.referenceNo),
+    receiptDate: receipt.receiptDate,
+    status: receipt.status,
+    lineCount: lines.length,
+    totalQuantity: lines.reduce((sum, line) => sum + line.quantity, 0),
+    totalAmount: lines.reduce((sum, line) => sum + line.quantity * line.unitCost, 0),
+    createdBy: requiredUserRef(receipt.createdById),
+    createdAt: receipt.createdAt,
+  };
+}
+
+export function toGoodsReceipt(receipt: GoodsReceiptEntity): GoodsReceipt {
+  const lines = receiptLines(receipt.id);
+  return {
+    ...toGoodsReceiptSummary(receipt, lines),
+    ...documentAudit(receipt),
+    note: opt(receipt.note),
+    lines: lines.map(toGoodsReceiptLine),
+  };
+}
+
+export function toGoodsIssueLine(line: GoodsIssueLineEntity): GoodsIssueLine {
+  return {
+    id: line.id,
+    ...productFields(line.productId),
+    quantity: line.quantity,
+    unitPrice: line.unitPrice,
+    amount: line.quantity * line.unitPrice,
+    unitCost: opt(line.unitCost),
+    lotNumber: line.lotNumber,
+    serialNumbers: [...line.serialNumbers],
+    picks: parseIssuePicks(line).map(toStockPick),
+  };
+}
+
+export function toGoodsIssueSummary(
+  issue: GoodsIssueEntity,
+  lines = issueLines(issue.id),
+): GoodsIssueSummary {
+  return {
+    id: issue.id,
+    code: issue.code,
+    warehouseId: issue.warehouseId,
+    warehouseName: warehouseName(issue.warehouseId),
+    customerId: issue.customerId,
+    customerName: issue.customerName,
+    reason: issue.reason,
+    referenceNo: opt(issue.referenceNo),
+    issueDate: issue.issueDate,
+    status: issue.status,
+    lineCount: lines.length,
+    totalQuantity: lines.reduce((sum, line) => sum + line.quantity, 0),
+    totalAmount: lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0),
+    createdBy: requiredUserRef(issue.createdById),
+    createdAt: issue.createdAt,
+  };
+}
+
+export function toGoodsIssue(issue: GoodsIssueEntity): GoodsIssue {
+  const lines = issueLines(issue.id);
+  return {
+    ...toGoodsIssueSummary(issue, lines),
+    ...documentAudit(issue),
+    note: opt(issue.note),
+    lines: lines.map(toGoodsIssueLine),
+  };
+}
+
+// ── Biến động tồn ──
+
+export function toStockMovement(movement: StockMovementEntity): StockMovement {
+  const product = findById('product', movement.productId);
+  return {
+    id: movement.id,
+    occurredAt: movement.occurredAt,
+    type: movement.type,
+    productId: movement.productId,
+    sku: product?.sku ?? '—',
+    productName: product?.name ?? '—',
+    unit: product?.unit ?? '',
+    warehouseId: movement.warehouseId,
+    warehouseName: warehouseName(movement.warehouseId),
+    locationId: movement.locationId,
+    locationCode: findById('location', movement.locationId)?.code ?? null,
+    quantity: movement.quantity,
+    balanceAfter: movement.balanceAfter,
+    unitCost: movement.unitCost,
+    documentType: movement.documentType,
+    documentId: movement.documentId,
+    documentCode: movement.documentCode,
+    createdBy: requiredUserRef(movement.createdById),
+    note: opt(movement.note),
+    lotNumber: movement.lotNumber,
+    expiryDate: movement.expiryDate,
+    serialNumbers: [...movement.serialNumbers],
+  };
+}
 
 // ── Chuyển kho ──
 
@@ -40,8 +228,11 @@ export function toTransferLine(line: TransferLineEntity): TransferLine {
     fromLocationId: line.fromLocationId,
     picks: parsePicks(line).map((pick) => ({
       locationId: pick.locationId,
-      locationCode: findById('location', pick.locationId)?.code ?? '—',
+      locationCode: findById('location', pick.locationId)?.code ?? null,
       quantity: pick.quantity,
+      lotNumber: pick.lotNumber,
+      expiryDate: pick.expiryDate,
+      ...(pick.serialNumbers?.length ? { serialNumbers: [...pick.serialNumbers] } : {}),
     })),
     receivedQuantity: line.receivedQuantity,
     toLocationId: line.toLocationId,

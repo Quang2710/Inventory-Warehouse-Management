@@ -3,7 +3,11 @@ import { authHandlers } from './auth.handlers';
 import { catalogHandlers } from './catalog.handlers';
 import { demoHandlers } from './demo.handlers';
 import { latencyAndChaosHandler, notImplementedHandler } from './middleware.handlers';
+import { issueHandlers } from './issues.handlers';
 import { partnerHandlers } from './partners.handlers';
+import { receiptHandlers } from './receipts.handlers';
+import { reportHandlers } from './reports.handlers';
+import { stockHandlers } from './stock.handlers';
 import { stocktakeHandlers } from './stocktakes.handlers';
 import { transferHandlers } from './transfers.handlers';
 import { userHandlers } from './users.handlers';
@@ -20,9 +24,13 @@ export const handlers = [
   ...userHandlers,
   ...catalogHandlers,
   ...warehouseHandlers,
+  ...stockHandlers,
+  ...receiptHandlers,
+  ...issueHandlers,
   ...transferHandlers,
   ...stocktakeHandlers,
   ...partnerHandlers,
   ...auditHandlers,
+  ...reportHandlers,
   notImplementedHandler,
 ];
